@@ -316,6 +316,47 @@ test('auth against PostgreSQL and Redis', async (t) => {
     await db.userAccount.update({ where: { userId: accounts.manager.userId }, data: { roleId: accounts.manager.roleId } });
   });
 
+  await t.test('stock creation, scoped reads and atomic threshold edits', async () => {
+    const pharmacyId = pharmacyIds[0];
+    const drugs = await db.drug.findMany({ where: { isActive: true, drugId: { notIn: drugIds } },
+      orderBy: [{ registrationId: { sort: 'asc', nulls: 'last' } }, { drugId: 'asc' }], take: 2 });
+    while (drugs.length < 2) {
+      const drug = await db.drug.create({ data: { sku: 'INV-' + run + drugs.length, name: 'Stock fixture', dosageForm: 'tablet', unit: 'pack' } });
+      drugs.push(drug);
+      drugIds.push(drug.drugId);
+    }
+    const create = (cookies, body) => request('/stocks', { method: 'POST', cookies, body });
+    const base = { pharmacyId, sku: drugs[0].sku, msl: 2, maxLevel: 10, quantity: 12 };
+    assert.equal((await create(head, base)).status, 403);
+    assert.equal((await create(admin, { ...base, msl: -1 })).status, 400);
+    assert.equal((await create(admin, { ...base, sku: 'MISSING-' + run })).status, 404);
+    const created = await Promise.all([create(admin, base), create(manager, base)]);
+    const success = created.find(r => r.status === 201);
+    assert.ok(success);
+    const stock = await success.json();
+    stockIds.push(stock.stockId);
+    assert.deepEqual(created.map(r => r.status).sort(), [201, 409]);
+    const second = await create(manager, { pharmacyId, sku: drugs[1].sku, msl: 0, maxLevel: 0 });
+    assert.equal(second.status, 201);
+    const empty = await second.json();
+    stockIds.push(empty.stockId);
+    assert.equal(empty.quantity, 0);
+    const patch = (cookies, body) => request('/stocks/' + stock.stockId + '/thresholds', { method: 'PATCH', cookies, body });
+    assert.equal((await patch(head, { msl: 4 })).status, 403);
+    assert.equal((await patch(manager, { maxLevel: 1 })).status, 400);
+    assert.equal((await patch(manager, { quantity: 0 })).status, 400);
+    const edits = await Promise.all([patch(manager, { msl: 9 }), patch(admin, { maxLevel: 5 })]);
+    assert.deepEqual(edits.map(r => r.status).sort(), [200, 400]);
+    const final = await patch(admin, { msl: 5, maxLevel: 5 });
+    assert.equal(final.status, 200);
+    assert.equal((await final.json()).quantity, 12);
+    assert.equal((await patch(admin, { msl: 5 })).status, 200);
+    assert.equal(await db.auditLog.count({ where: { stockId: stock.stockId, eventType: 'THRESHOLDS_CHANGED' } }), 3);
+    const path = '/stocks?pharmacyId=' + pharmacyId + '&sku=' + encodeURIComponent(base.sku);
+    assert.deepEqual((await (await request(path, { cookies: admin })).json()).map(row => row.stockId), [stock.stockId]);
+    assert.deepEqual(await (await request(path, { cookies: head })).json(), []);
+  });
+
   await t.test('selected session revocation, ownership checks, and logout all', async () => {
     const second = cookie(await login('head'));
     const sessions = await (await request('/auth/sessions', { cookies: head })).json();
