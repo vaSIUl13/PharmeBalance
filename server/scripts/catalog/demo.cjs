@@ -125,15 +125,15 @@ async function persistPharmacy(db, data, pairs, ids, key, label, asOf) {
     } });
     const stocks = await tx.stockItem.createManyAndReturn({ data: pairs.map((pair) => ({
       pharmacyId: pharmacy.pharmacyId, drugId: ids[pair.drug],
-      quantity: pair.quantity, msl: pair.msl, maxLevel: pair.maxLevel, updatedAt: asOf,
+      quantity: pair.quantity, msl: pair.msl, maxLevel: pair.maxLevel, updatedAt: asOf, quantityAsOf: asOf,
     })), select: { stockId: true, drugId: true } });
     const stockIds = new Map(stocks.map((row) => [row.drugId, row.stockId]));
     let buffer = [];
     let sales = 0;
     for (const pair of pairs) {
       const stockId = stockIds.get(ids[pair.drug]);
-      for (const { saleDate, quantity, unitPrice } of pair.sales) {
-        buffer.push({ stockId, importId: batch.importId, saleDate, quantity, unitPrice });
+      for (const { saleDate, quantity, unitPrice, demand } of pair.sales) {
+        buffer.push({ stockId, importId: batch.importId, saleDate, quantity, unitPrice, stockout: quantity < demand });
         if (buffer.length === 2500) {
           sales += (await tx.sale.createMany({ data: buffer })).count;
           buffer = [];

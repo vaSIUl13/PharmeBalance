@@ -256,18 +256,42 @@ model AuditLog {
   @@map("audit_log")
 }
 
+model ForecastRun {
+  id Int @id @default(autoincrement())
+  asOf DateTime @db.Date @map("as_of")
+  synthetic Boolean
+  version String
+  policy Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  forecasts Forecast[]
+  @@unique([asOf, synthetic, version])
+  @@map("forecast_run")
+}
+
 model Forecast {
+  runId Int? @map("run_id")
+  run ForecastRun? @relation(fields: [runId], references: [id])
+  abcClass AbcClass? @map("abc_class")
+  xyzClass XyzClass? @map("xyz_class")
+  quantity Int?
+  msl Int?
+  maxLevel Int? @map("max_level")
+  quality Json?
+  shortage Decimal? @db.Decimal(14,0)
+  currentSurplus Int? @map("current_surplus")
+  projectedSurplus Int? @map("projected_surplus")
   forecastId Int @id @default(autoincrement()) @map("forecast_id")
   stockId Int @map("stock_id")
   createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
   horizonDays Int @default(14) @db.SmallInt @map("horizon_days")
-  predictedDemand Decimal @db.Decimal(10,2) @map("predicted_demand")
-  shortageProbability Decimal @db.Decimal(5,4) @map("shortage_probability")
+  predictedDemand Decimal? @db.Decimal(14,2) @map("predicted_demand")
+  shortageProbability Decimal? @db.Decimal(5,4) @map("shortage_probability")
   modelVersion String @db.VarChar(30) @map("model_version")
   stock StockItem @relation("fk_forecast_stock_id", fields: [stockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_forecast_stock_id")
   risk Risk? @relation("fk_risk_forecast_id")
 
   @@index([stockId], map: "fk_forecast_stock_id_idx")
+  @@unique([runId, stockId])
   @@map("forecast")
 }
 
@@ -351,6 +375,7 @@ model Risk {
 }
 
 model Sale {
+  stockout Boolean?
   saleId Int @id @default(autoincrement()) @map("sale_id")
   stockId Int @map("stock_id")
   importId Int @map("import_id")

@@ -52,7 +52,7 @@ export class ImportsController {
 
   @Post('sales')
   @importFile(false)
-  @ApiOperation({ summary: 'Import daily sales', description: 'CSV header: sku,date,quantity. JSON: [{"sku":"CAT-SAMPLE-0001","date":"2026-01-30","quantity":2}]. Optional returnedQuantity, unitPrice, replacesImportId. Corrections replace the whole daily aggregate and must name its current import ID.' })
+  @ApiOperation({ summary: 'Import daily sales', description: 'CSV header: sku,date,quantity. JSON: [{"sku":"CAT-SAMPLE-0001","date":"2026-01-30","quantity":2}]. Optional returnedQuantity, unitPrice, stockout, replacesImportId. Set stockout=true for known unavailable stock; omit for unknown availability. Corrections replace the whole daily aggregate and must name its current import ID.' })
   sales(@Req() req: AuthRequest, @UploadedFile() file: File | undefined, @Body() fields: Record<string, unknown>) {
     return this.submit(req, file, fields, 'SALES');
   }

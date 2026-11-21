@@ -125,8 +125,11 @@ test('auth against PostgreSQL and Redis', async (t) => {
   const drugIds = [];
   const stockIds = [];
   const transferIds = [];
+  const forecastRunIds = [];
   t.after(async () => {
     const ids = Object.values(accounts).map((user) => user.userId);
+    await db.forecast.deleteMany({ where: { runId: { in: forecastRunIds } } });
+    await db.forecastRun.deleteMany({ where: { id: { in: forecastRunIds } } });
     await db.sale.deleteMany({ where: { import: { uploadedBy: { in: ids } } } });
     await db.importBatch.deleteMany({ where: { uploadedBy: { in: ids } } });
     await db.auditLog.deleteMany({ where: { userId: { in: ids } } });
@@ -302,6 +305,21 @@ test('auth against PostgreSQL and Redis', async (t) => {
     const detail = '/recommendations/' + recommendation.recommendationId;
     assert.equal((await request(detail, { cookies: head })).status, 404);
     await db.userPharmacy.create({ data: scope });
+    const forecastRun = await db.forecastRun.create({ data: {
+      asOf: new Date('2001-01-01'), version: run, synthetic: false, policy: {},
+    } });
+    forecastRunIds.push(forecastRun.id);
+    await db.forecast.createMany({ data: stockIds.map(stockId => ({ stockId, modelVersion: 'fixture',
+      runId: forecastRun.id, predictedDemand: 5, shortageProbability: 0.5, currentSurplus: 2 })) });
+    for (const endpoint of ['forecasts','risks','classifications','surpluses']) {
+      const route = '/' + endpoint + '?asOf=2001-01-01';
+      const own = await request(route, { cookies: head });
+      assert.equal(own.status, 200);
+      assert.deepEqual((await own.json()).items.map(row=>row.stockId), [stockIds[0]]);
+      const foreign = await request(route + '&pharmacyId=' + pharmacyIds[1], { cookies: head });
+      assert.deepEqual((await foreign.json()).items, []);
+      assert.equal((await request(route, { cookies: admin })).status, 403);
+    }
     assert.deepEqual((await (await request('/stocks', { cookies: head })).json()).map((row) => row.pharmacyId), [pharmacyIds[0]]);
     assert.equal((await request(detail, { cookies: head })).status, 200);
     const permission = await db.permission.findUniqueOrThrow({ where: { code: 'PHARMACY_VIEW' } });
