@@ -6,6 +6,16 @@ const { digest, encryptMfa } = require('../dist/modules/auth/auth-security');
 async function main() {
   const email = process.argv[2]?.trim().toLowerCase();
   if (!email) throw new Error('Pass the administrator email as the first argument.');
+  const args = process.argv.slice(3);
+  const replace = args.length === 1 && args[0] === '--replace-test';
+  if (args.length && !replace) throw new Error('Expected --replace-test or no option.');
+  if (replace) {
+    const url = new URL(process.env.DATABASE_URL);
+    if (url.hostname !== '127.0.0.1' || url.pathname !== '/pharmabalance_catalog_test' ||
+        email !== 'admin.test@example.com') {
+      throw new Error('--replace-test is restricted to the local catalog test administrator.');
+    }
+  }
   const db = new PrismaClient();
   try {
     const secret = authenticator.generateSecret(20);
@@ -17,10 +27,19 @@ async function main() {
         where: { userId: account.userId }, include: { role: true },
       });
       if (!user.isActive || user.role.code !== 'admin') throw new Error('An active administrator is required.');
-      await tx.authMfa.create({ data: { userId: user.userId, encryptedSecret: encryptMfa(secret, user.userId), recoveryHashes: recoveryCodes.map(digest) } });
+      const credentials = { encryptedSecret: encryptMfa(secret, user.userId), recoveryHashes: recoveryCodes.map(digest) };
+      if (replace) {
+        await tx.authMfa.upsert({
+          where: { userId: user.userId },
+          create: { userId: user.userId, ...credentials },
+          update: { ...credentials, lastStep: -1n },
+        });
+      } else {
+        await tx.authMfa.create({ data: { userId: user.userId, ...credentials } });
+      }
       await tx.authSession.updateMany({ where: { userId: user.userId, revokedAt: null }, data: { revokedAt: new Date() } });
       await tx.authChallenge.deleteMany({ where: { userId: user.userId } });
-      await tx.authAuditEvent.create({ data: { userId: user.userId, event: 'MFA_ENROLLED' } });
+      await tx.authAuditEvent.create({ data: { userId: user.userId, event: replace ? 'MFA_REPLACED' : 'MFA_ENROLLED' } });
     });
     console.log(authenticator.keyuri(email, 'PharmeBalance', secret));
     console.log('Save these one-time recovery codes securely:');

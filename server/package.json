@@ -13,7 +13,12 @@
     "db:seed:demo": "prisma db execute --file prisma/demo.sql --schema prisma/schema.prisma",
     "db:seed:demo-users": "node --env-file-if-exists=.env prisma/seed-demo-users.cjs",
     "auth:enroll-admin": "node --env-file-if-exists=.env scripts/enroll-admin-mfa.cjs",
-    "test:auth": "npm run build && node --test test/auth.integration.cjs"
+    "test:auth": "npm run build && node --test test/auth.integration.cjs",
+    "catalog:sync": "node --env-file-if-exists=.env scripts/catalog/sync.cjs",
+    "catalog:link-sku": "node --env-file-if-exists=.env scripts/catalog/link-sku.cjs",
+    "db:seed:demo-network": "node --env-file-if-exists=.env scripts/catalog/demo.cjs",
+    "test:catalog": "node --test test/catalog.test.cjs",
+    "test:catalog:integration": "npm run build && node --test test/catalog.integration.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -21,6 +26,7 @@
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/swagger": "^11.0.0",
     "@prisma/client": "^6.19.0",
+    "csv-parse": "^7.0.3",
     "nodemailer": "^10.6.1",
     "otplib": "^12.0.1",
     "redis": "^6.3.1",

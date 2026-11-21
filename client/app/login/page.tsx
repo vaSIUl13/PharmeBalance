@@ -30,7 +30,9 @@ export default function Login() {
       }
       router.replace("/account");
     } catch (error) {
-      setMessage((error as Error).message);
+      const detail = (error as Error).message;
+      if (mfa && detail === "Запит MFA завершився. Увійди знову з email і паролем.") setMfa(false);
+      setMessage(detail);
     } finally {
       setBusy(false);
     }
