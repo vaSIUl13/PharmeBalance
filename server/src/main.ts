@@ -7,6 +7,7 @@ import { setupSwagger } from './config/swagger';
 async function bootstrap(): Promise<void> {
   if (existsSync('.env')) process.loadEnvFile('.env');
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   app.setGlobalPrefix('api/v1');
   setupSwagger(app);
   const port = Number(process.env.PORT ?? 3001);

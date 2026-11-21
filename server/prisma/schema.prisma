@@ -1,0 +1,343 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DataScope {
+  NETWORK @map("мережа")
+  ASSIGNED_PHARMACIES @map("призначені аптеки")
+}
+
+enum RecommendationStatus {
+  CREATED @map("Сформована")
+  CONFIRMED @map("Підтверджена")
+  REJECTED @map("Відхилена")
+  IN_PROGRESS @map("У виконанні")
+  COMPLETED @map("Виконана")
+  CANCELLED @map("Скасована")
+}
+
+enum Source {
+  OVERPASS @map("Overpass API")
+  HAVERSINE @map("гаверсинус")
+}
+
+enum AbcClass {
+  A
+  B
+  C
+}
+
+enum XyzClass {
+  X
+  Y
+  Z
+}
+
+enum EventType {
+  LOGIN @map("вхід")
+  ACCOUNT_CREATED @map("створення акаунта")
+  ACCOUNT_BLOCKED @map("блокування акаунта")
+  ROLE_CHANGED @map("зміна ролі")
+  PHARMACY_ASSIGNED @map("призначення до аптеки")
+  THRESHOLDS_CHANGED @map("зміна порогів")
+  REFERENCE_EDITED @map("редагування довідника")
+  REPORT_EXPORTED @map("експорт звіту")
+}
+
+enum DataType {
+  STOCKS @map("залишки")
+  SALES @map("продажі")
+}
+
+enum SourceFormat {
+  CSV
+  JSON
+}
+
+enum PositionType {
+  SHORTAGE @map("дефіцит")
+  SURPLUS @map("надлишок")
+}
+
+enum RiskLevel {
+  LOW @map("низький")
+  MEDIUM @map("середній")
+  HIGH @map("високий")
+}
+
+model Drug {
+  drugId Int @id @default(autoincrement()) @map("drug_id")
+  sku String @db.VarChar(30)
+  name String @db.VarChar(120)
+  dosageForm String @db.VarChar(40) @map("dosage_form")
+  strength String? @db.VarChar(40)
+  unit String @db.VarChar(20)
+  isActive Boolean @default(true) @map("is_active")
+  stockItemRows StockItem[] @relation("fk_stock_item_drug_id")
+
+  @@unique([sku], map: "drug_sku_UNIQUE")
+  @@map("drug")
+}
+
+model Permission {
+  permissionId Int @id @default(autoincrement()) @map("permission_id")
+  code String @db.VarChar(30)
+  name String @db.VarChar(100)
+  requirement String? @db.VarChar(30)
+  actionTypeRows ActionType[] @relation("fk_action_type_permission_id")
+  rolePermissionRows RolePermission[] @relation("fk_role_permission_permission_id")
+
+  @@unique([code], map: "permission_code_UNIQUE")
+  @@map("permission")
+}
+
+model Pharmacy {
+  pharmacyId Int @id @default(autoincrement()) @map("pharmacy_id")
+  code String @db.VarChar(20)
+  name String @db.VarChar(100)
+  city String @db.VarChar(60)
+  address String @db.VarChar(150)
+  latitude Decimal @db.Decimal(9,6)
+  longitude Decimal @db.Decimal(9,6)
+  isActive Boolean @default(true) @map("is_active")
+  pharmacyDistanceRowsFromPharmacy PharmacyDistance[] @relation("fk_pharmacy_distance_from_pharmacy_id")
+  pharmacyDistanceRowsToPharmacy PharmacyDistance[] @relation("fk_pharmacy_distance_to_pharmacy_id")
+  stockItemRows StockItem[] @relation("fk_stock_item_pharmacy_id")
+  userPharmacyRows UserPharmacy[] @relation("fk_user_pharmacy_pharmacy_id")
+
+  @@unique([code], map: "pharmacy_code_UNIQUE")
+  @@map("pharmacy")
+}
+
+model Role {
+  roleId Int @id @default(autoincrement()) @map("role_id")
+  code String @db.VarChar(20)
+  name String @db.VarChar(60)
+  dataScope DataScope @map("data_scope")
+  description String? @db.VarChar(200)
+  rolePermissionRows RolePermission[] @relation("fk_role_permission_role_id")
+  userAccountRows UserAccount[] @relation("fk_user_account_role_id")
+
+  @@unique([code], map: "role_code_UNIQUE")
+  @@map("role")
+}
+
+model ActionType {
+  actionTypeId Int @id @default(autoincrement()) @map("action_type_id")
+  code String @db.VarChar(20)
+  name String @db.VarChar(60)
+  permissionId Int @map("permission_id")
+  fromStatus RecommendationStatus @map("from_status")
+  toStatus RecommendationStatus @map("to_status")
+  permission Permission @relation("fk_action_type_permission_id", fields: [permissionId], references: [permissionId], onDelete: NoAction, onUpdate: NoAction, map: "fk_action_type_permission_id")
+  recommendationActionRows RecommendationAction[] @relation("fk_recommendation_action_action_type_id")
+
+  @@unique([code], map: "action_type_code_UNIQUE")
+  @@index([permissionId], map: "fk_action_type_permission_id_idx")
+  @@map("action_type")
+}
+
+model PharmacyDistance {
+  fromPharmacyId Int @map("from_pharmacy_id")
+  toPharmacyId Int @map("to_pharmacy_id")
+  distanceKm Decimal @db.Decimal(7,2) @map("distance_km")
+  source Source
+  calculatedAt DateTime @default(now()) @db.Timestamptz(3) @map("calculated_at")
+  isActual Boolean @default(true) @map("is_actual")
+  fromPharmacy Pharmacy @relation("fk_pharmacy_distance_from_pharmacy_id", fields: [fromPharmacyId], references: [pharmacyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pharmacy_distance_from_pharmacy_id")
+  toPharmacy Pharmacy @relation("fk_pharmacy_distance_to_pharmacy_id", fields: [toPharmacyId], references: [pharmacyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pharmacy_distance_to_pharmacy_id")
+
+  @@id([fromPharmacyId, toPharmacyId])
+  @@index([toPharmacyId], map: "fk_pharmacy_distance_to_pharmacy_id_idx")
+  @@map("pharmacy_distance")
+}
+
+model RolePermission {
+  roleId Int @map("role_id")
+  permissionId Int @map("permission_id")
+  grantedAt DateTime @default(now()) @db.Timestamptz(3) @map("granted_at")
+  permission Permission @relation("fk_role_permission_permission_id", fields: [permissionId], references: [permissionId], onDelete: NoAction, onUpdate: NoAction, map: "fk_role_permission_permission_id")
+  role Role @relation("fk_role_permission_role_id", fields: [roleId], references: [roleId], onDelete: NoAction, onUpdate: NoAction, map: "fk_role_permission_role_id")
+
+  @@id([roleId, permissionId])
+  @@index([permissionId], map: "fk_role_permission_permission_id_idx")
+  @@map("role_permission")
+}
+
+model StockItem {
+  stockId Int @id @default(autoincrement()) @map("stock_id")
+  pharmacyId Int @map("pharmacy_id")
+  drugId Int @map("drug_id")
+  quantity Int @default(0)
+  msl Int @default(0)
+  maxLevel Int @map("max_level")
+  abcClass AbcClass? @map("abc_class")
+  xyzClass XyzClass? @map("xyz_class")
+  updatedAt DateTime @default(now()) @db.Timestamptz(3) @map("updated_at")
+  drug Drug @relation("fk_stock_item_drug_id", fields: [drugId], references: [drugId], onDelete: NoAction, onUpdate: NoAction, map: "fk_stock_item_drug_id")
+  pharmacy Pharmacy @relation("fk_stock_item_pharmacy_id", fields: [pharmacyId], references: [pharmacyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_stock_item_pharmacy_id")
+  auditLogRows AuditLog[] @relation("fk_audit_log_stock_id")
+  forecastRows Forecast[] @relation("fk_forecast_stock_id")
+  recommendationRowsDonorStock Recommendation[] @relation("fk_recommendation_donor_stock_id")
+  recommendationRowsRecipientStock Recommendation[] @relation("fk_recommendation_recipient_stock_id")
+  saleRows Sale[] @relation("fk_sale_stock_id")
+
+  @@unique([pharmacyId, drugId], map: "stock_pharmacy_drug_UNIQUE")
+  @@index([drugId], map: "fk_stock_item_drug_id_idx")
+  @@map("stock_item")
+}
+
+model UserAccount {
+  userId Int @id @default(autoincrement()) @map("user_id")
+  login String @db.VarChar(50)
+  passwordHash String @db.VarChar(255) @map("password_hash")
+  lastName String @db.VarChar(60) @map("last_name")
+  firstName String @db.VarChar(60) @map("first_name")
+  email String @db.VarChar(100)
+  roleId Int @map("role_id")
+  isActive Boolean @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  role Role @relation("fk_user_account_role_id", fields: [roleId], references: [roleId], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_account_role_id")
+  userPharmacyRows UserPharmacy[] @relation("fk_user_pharmacy_user_id")
+  auditLogRowsTargetUser AuditLog[] @relation("fk_audit_log_target_user_id")
+  auditLogRowsUser AuditLog[] @relation("fk_audit_log_user_id")
+  recommendationActionRows RecommendationAction[] @relation("fk_recommendation_action_user_id")
+
+  @@unique([login], map: "user_login_UNIQUE")
+  @@unique([email], map: "user_email_UNIQUE")
+  @@index([roleId], map: "fk_user_account_role_id_idx")
+  @@map("user_account")
+}
+
+model UserPharmacy {
+  userId Int @map("user_id")
+  pharmacyId Int @map("pharmacy_id")
+  assignedAt DateTime @default(now()) @db.Timestamptz(3) @map("assigned_at")
+  unassignedAt DateTime? @db.Timestamptz(3) @map("unassigned_at")
+  pharmacy Pharmacy @relation("fk_user_pharmacy_pharmacy_id", fields: [pharmacyId], references: [pharmacyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_pharmacy_pharmacy_id")
+  user UserAccount @relation("fk_user_pharmacy_user_id", fields: [userId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_pharmacy_user_id")
+  importBatchRows ImportBatch[] @relation("fk_import_batch_uploaded_by_pharmacy_id")
+
+  @@id([userId, pharmacyId])
+  @@index([pharmacyId], map: "fk_user_pharmacy_pharmacy_id_idx")
+  @@map("user_pharmacy")
+}
+
+model AuditLog {
+  logId Int @id @default(autoincrement()) @map("log_id")
+  userId Int @map("user_id")
+  targetUserId Int? @map("target_user_id")
+  stockId Int? @map("stock_id")
+  eventType EventType @map("event_type")
+  eventTime DateTime @default(now()) @db.Timestamptz(3) @map("event_time")
+  details String? @db.VarChar(300)
+  stock StockItem? @relation("fk_audit_log_stock_id", fields: [stockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_audit_log_stock_id")
+  targetUser UserAccount? @relation("fk_audit_log_target_user_id", fields: [targetUserId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_audit_log_target_user_id")
+  user UserAccount @relation("fk_audit_log_user_id", fields: [userId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_audit_log_user_id")
+
+  @@index([userId], map: "fk_audit_log_user_id_idx")
+  @@index([targetUserId], map: "fk_audit_log_target_user_id_idx")
+  @@index([stockId], map: "fk_audit_log_stock_id_idx")
+  @@map("audit_log")
+}
+
+model Forecast {
+  forecastId Int @id @default(autoincrement()) @map("forecast_id")
+  stockId Int @map("stock_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  horizonDays Int @default(14) @db.SmallInt @map("horizon_days")
+  predictedDemand Decimal @db.Decimal(10,2) @map("predicted_demand")
+  shortageProbability Decimal @db.Decimal(5,4) @map("shortage_probability")
+  modelVersion String @db.VarChar(30) @map("model_version")
+  stock StockItem @relation("fk_forecast_stock_id", fields: [stockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_forecast_stock_id")
+  risk Risk? @relation("fk_risk_forecast_id")
+
+  @@index([stockId], map: "fk_forecast_stock_id_idx")
+  @@map("forecast")
+}
+
+model ImportBatch {
+  importId Int @id @default(autoincrement()) @map("import_id")
+  uploadedBy Int @map("uploaded_by")
+  pharmacyId Int @map("pharmacy_id")
+  dataType DataType @map("data_type")
+  sourceFormat SourceFormat @map("source_format")
+  fileName String @db.VarChar(150) @map("file_name")
+  uploadedAt DateTime @default(now()) @db.Timestamptz(3) @map("uploaded_at")
+  recordsTotal Int @map("records_total")
+  recordsRejected Int @default(0) @map("records_rejected")
+  assignment UserPharmacy @relation("fk_import_batch_uploaded_by_pharmacy_id", fields: [uploadedBy, pharmacyId], references: [userId, pharmacyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_import_batch_uploaded_by_pharmacy_id")
+  saleRows Sale[] @relation("fk_sale_import_id")
+
+  @@index([uploadedBy, pharmacyId], map: "fk_import_batch_uploaded_by_pharmacy_id_idx")
+  @@map("import_batch")
+}
+
+model Recommendation {
+  recommendationId Int @id @default(autoincrement()) @map("recommendation_id")
+  recipientStockId Int @map("recipient_stock_id")
+  donorStockId Int @map("donor_stock_id")
+  quantity Int
+  priority Int @db.SmallInt
+  status RecommendationStatus @default(CREATED)
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  donorStock StockItem @relation("fk_recommendation_donor_stock_id", fields: [donorStockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_donor_stock_id")
+  recipientStock StockItem @relation("fk_recommendation_recipient_stock_id", fields: [recipientStockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_recipient_stock_id")
+  recommendationActionRows RecommendationAction[] @relation("fk_recommendation_action_recommendation_id")
+
+  @@index([recipientStockId], map: "fk_recommendation_recipient_stock_id_idx")
+  @@index([donorStockId], map: "fk_recommendation_donor_stock_id_idx")
+  @@map("recommendation")
+}
+
+model RecommendationAction {
+  actionId Int @id @default(autoincrement()) @map("action_id")
+  recommendationId Int @map("recommendation_id")
+  actionTypeId Int @map("action_type_id")
+  userId Int @map("user_id")
+  actionTime DateTime @default(now()) @db.Timestamptz(3) @map("action_time")
+  quantity Int?
+  comment String? @db.VarChar(300)
+  actionType ActionType @relation("fk_recommendation_action_action_type_id", fields: [actionTypeId], references: [actionTypeId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_action_action_type_id")
+  recommendation Recommendation @relation("fk_recommendation_action_recommendation_id", fields: [recommendationId], references: [recommendationId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_action_recommendation_id")
+  user UserAccount @relation("fk_recommendation_action_user_id", fields: [userId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_action_user_id")
+
+  @@unique([recommendationId, actionTypeId], map: "rec_action_UNIQUE")
+  @@index([actionTypeId], map: "fk_recommendation_action_action_type_id_idx")
+  @@index([userId], map: "fk_recommendation_action_user_id_idx")
+  @@map("recommendation_action")
+}
+
+model Risk {
+  forecastId Int @id @map("forecast_id")
+  positionType PositionType @map("position_type")
+  riskLevel RiskLevel @map("risk_level")
+  surplusQuantity Int? @map("surplus_quantity")
+  daysToStockout Int? @map("days_to_stockout")
+  calculatedAt DateTime @default(now()) @db.Timestamptz(3) @map("calculated_at")
+  forecast Forecast @relation("fk_risk_forecast_id", fields: [forecastId], references: [forecastId], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_forecast_id")
+
+  @@map("risk")
+}
+
+model Sale {
+  saleId Int @id @default(autoincrement()) @map("sale_id")
+  stockId Int @map("stock_id")
+  importId Int @map("import_id")
+  saleDate DateTime @db.Date @map("sale_date")
+  quantity Int
+  returnedQuantity Int @default(0) @map("returned_quantity")
+  unitPrice Decimal? @db.Decimal(10,2) @map("unit_price")
+  sourceRow Int? @map("source_row")
+  import ImportBatch @relation("fk_sale_import_id", fields: [importId], references: [importId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sale_import_id")
+  stock StockItem @relation("fk_sale_stock_id", fields: [stockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sale_stock_id")
+
+  @@unique([stockId, saleDate], map: "sale_stock_date_UNIQUE")
+  @@index([importId], map: "fk_sale_import_id_idx")
+  @@map("sale")
+}
