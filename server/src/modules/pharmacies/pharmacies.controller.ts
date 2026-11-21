@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, Req } from '@nestjs/common';
-import { ApiBody, ApiTags } from '@nestjs/swagger';
+import { BadRequestException, Body, Controller, DefaultValuePipe, Get, Header, Param, ParseIntPipe, Post, Query, Req } from '@nestjs/common';
+import { ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Permissions, type AuthRequest } from '../auth/auth.guard';
 import { PharmaciesService } from './pharmacies.service';
 
@@ -23,6 +23,15 @@ function coordinate(input: unknown, key: string, max: number) {
 export class PharmaciesController {
   constructor(private readonly pharmacies: PharmaciesService) {}
 
+  @Get()
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'List managed pharmacies visible to the current user' })
+  @ApiQuery({ name: 'after', required: false, type: Number })
+  list(@Req() req: AuthRequest, @Query('after', new DefaultValuePipe(0), ParseIntPipe) after: number) {
+    if (after < 0 || after > 2147483647) throw new BadRequestException('Invalid cursor');
+    return this.pharmacies.list(req.principal!, after);
+  }
+
   @Get('external')
   @Permissions('REFERENCE_EDIT')
   external(@Query('q') query?: string, @Query('after') after?: string) {
@@ -30,6 +39,13 @@ export class PharmaciesController {
         (after !== undefined && (typeof after !== 'string' || !/^\d+$/.test(after) ||
           Number(after) > 2147483647))) throw new BadRequestException('Invalid search parameters');
     return this.pharmacies.external(query?.trim(), after === undefined ? undefined : Number(after));
+  }
+
+  @Get(':id')
+  @Header('Cache-Control', 'no-store')
+  @ApiOperation({ summary: 'View a managed pharmacy within the current user scope' })
+  detail(@Req() req: AuthRequest, @Param('id', ParseIntPipe) id: number) {
+    return this.pharmacies.detail(req.principal!, id);
   }
 
   @Post()

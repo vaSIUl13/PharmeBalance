@@ -96,9 +96,18 @@ test('auth against PostgreSQL and Redis', async (t) => {
   setupSwagger(app);
   await app.listen(0, '127.0.0.1');
   const root = (await app.getUrl()) + '/api/v1';
+  const docs = await fetch((await app.getUrl()) + '/docs');
+  assert.equal(docs.status, 200);
+  assert.match(await docs.text(), /swagger-ui/);
   const specResponse = await fetch((await app.getUrl()) + '/openapi.json');
   assert.equal(specResponse.status, 200);
   const spec = await specResponse.json();
+  for (const path of ['/roles', '/users', '/audit', '/pharmacies']) {
+    assert.ok(spec.paths['/api/v1' + path].get);
+  }
+  assert.ok(spec.paths['/api/v1/users'].post.requestBody);
+  assert.ok(spec.paths['/api/v1/users/{id}'].patch.requestBody);
+  assert.ok(spec.paths['/api/v1/pharmacies/{id}'].get);
   assert.deepEqual(spec.paths['/api/v1/auth/login'].post.security, []);
   assert.deepEqual(spec.paths['/api/v1/health'].get.security, []);
   assert.deepEqual(spec.security, [{ '__Host-pharme-session': [] }]);
@@ -107,18 +116,20 @@ test('auth against PostgreSQL and Redis', async (t) => {
 
   const accounts = {};
   const pharmacyIds = [];
+  const managedIds = [];
   const drugIds = [];
   const stockIds = [];
   const transferIds = [];
   t.after(async () => {
     const ids = Object.values(accounts).map((user) => user.userId);
+    await db.auditLog.deleteMany({ where: { userId: { in: ids } } });
     await db.authAuditEvent.deleteMany({ where: { userId: { in: ids } } });
     await db.userPharmacy.deleteMany({ where: { userId: { in: ids } } });
     await db.userAccount.deleteMany({ where: { userId: { in: ids } } });
     await db.recommendation.deleteMany({ where: { recommendationId: { in: transferIds } } });
     await db.stockItem.deleteMany({ where: { stockId: { in: stockIds } } });
     await db.drug.deleteMany({ where: { drugId: { in: drugIds } } });
-    await db.pharmacy.deleteMany({ where: { pharmacyId: { in: pharmacyIds } } });
+    await db.pharmacy.deleteMany({ where: { pharmacyId: { in: [...pharmacyIds, ...managedIds] } } });
   });
 
   for (const role of ['admin', 'manager', 'head', 'logist']) {
@@ -195,6 +206,71 @@ test('auth against PostgreSQL and Redis', async (t) => {
     assert.equal((await recovery(thirdPending)).status, 204);
     const fourth = await login('admin');
     assert.equal((await recovery(cookie(fourth, '__Host-pharme-mfa='))).status, 401);
+  });
+
+  await t.test('administrators assign exactly one head, activate and audit a managed pharmacy', async () => {
+    const created = await request('/pharmacies', { method: 'POST', cookies: admin, body: {
+      code: 'M' + run, name: 'Managed', city: 'Test', address: 'Test', latitude: 49, longitude: 24,
+    } });
+    assert.equal(created.status, 201);
+    const { pharmacyId, isActive } = await created.json();
+    managedIds.push(pharmacyId);
+    assert.equal(isActive, false);
+    const body = { login: 'new-' + run, email: run + '@example.invalid', firstName: 'New',
+      lastName: 'Head', password, role: 'manager' };
+    const create = (cookies, data) => request('/users', { method: 'POST', cookies, body: data });
+    assert.equal((await create(head, body)).status, 403);
+    assert.equal((await create(admin, { ...body, role: 'head' })).status, 400);
+    const user = await create(admin, body);
+    assert.equal(user.status, 201);
+    accounts.newHead = await user.json();
+    assert.equal(accounts.newHead.passwordHash, undefined);
+    assert.equal((await create(admin, body)).status, 409);
+    const session = cookie(await login('newHead'));
+    const assign = (id) => request('/users/' + id, { method: 'PATCH', cookies: admin, body: { role: 'head', pharmacyId } });
+    const attempts = await Promise.all([assign(accounts.newHead.userId), assign(accounts.newHead.userId)]);
+    assert.deepEqual(attempts.map(r => r.status), [200, 200]);
+    assert.equal((await assign(accounts.manager.userId)).status, 409);
+    const directory = await request('/users?after=' + (accounts.newHead.userId - 1), { cookies: admin });
+    assert.equal(directory.status, 200);
+    const listed = (await directory.json()).items[0];
+    assert.equal(listed.userId, accounts.newHead.userId);
+    assert.equal(listed.role.code, 'head');
+    assert.deepEqual(listed.pharmacyIds, [pharmacyId]);
+    assert.equal(listed.passwordHash, undefined);
+    const roles = await request('/roles', { cookies: admin });
+    assert.equal(roles.status, 200);
+    assert.deepEqual((await roles.json()).map(role => role.code), ['admin', 'head', 'logist', 'manager']);
+    for (const route of ['/roles', '/users', '/audit']) {
+      assert.equal((await request(route, { cookies: session })).status, 403);
+    }
+    for (const route of ['/users?after=-1', '/audit?before=oops']) {
+      assert.equal((await request(route, { cookies: admin })).status, 400);
+    }
+    const visible = await (await request('/pharmacies', { cookies: session })).json();
+    assert.deepEqual(visible.items.map(p => [p.pharmacyId, p.isActive]), [[pharmacyId, true]]);
+    assert.equal((await request('/pharmacies/' + pharmacyId, { cookies: session })).status, 200);
+    assert.equal((await request('/pharmacies/' + pharmacyId, { cookies: head })).status, 404);
+    const events = await db.auditLog.findMany({ where: { targetUserId: accounts.newHead.userId }, orderBy: { logId: 'asc' } });
+    assert.deepEqual(events.map(e => e.eventType), ['ACCOUNT_CREATED', 'ROLE_CHANGED', 'PHARMACY_ASSIGNED', 'REFERENCE_EDITED']);
+    assert.equal((await request('/users/' + accounts.newHead.userId + '/block', { method: 'POST', cookies: admin })).status, 204);
+    const history = await request('/audit?targetUserId=' + accounts.newHead.userId, { cookies: admin });
+    assert.equal(history.status, 200);
+    const log = (await history.json()).items;
+    assert.deepEqual(log.map(row => row.eventType), ['ACCOUNT_BLOCKED', 'REFERENCE_EDITED', 'PHARMACY_ASSIGNED',
+      'REFERENCE_EDITED', 'PHARMACY_ASSIGNED', 'ROLE_CHANGED', 'ACCOUNT_CREATED']);
+    assert(log.every(row => row.userId === accounts.admin.userId && row.targetUserId === accounts.newHead.userId));
+    assert.equal((await db.pharmacy.findUniqueOrThrow({ where: { pharmacyId } })).isActive, false);
+    const candidates = [1, 2].map(i => ({ ...body, role: 'head', pharmacyId,
+      login: 'candidate-' + i + run, email: 'candidate-' + i + run + '@example.invalid' }));
+    const race = await Promise.all(candidates.map(candidate => create(admin, candidate)));
+    for (const [i, response] of race.entries()) {
+      if (response.status === 201) accounts['candidate' + i] = await response.json();
+    }
+    assert.deepEqual(race.map(r => r.status).sort(), [201, 409]);
+    assert.equal(await db.userAccount.count({ where: { login: { in: candidates.map(c => c.login) } } }), 1);
+    assert.equal(await db.userPharmacy.count({ where: { pharmacyId, unassignedAt: null } }), 1);
+    assert.equal((await db.pharmacy.findUniqueOrThrow({ where: { pharmacyId } })).isActive, true);
   });
 
   await t.test('pharmacy and transfer scopes update on the next request', async () => {

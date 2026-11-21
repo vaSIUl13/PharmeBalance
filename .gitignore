@@ -10,3 +10,5 @@ coverage/
 *.tsbuildinfo
 npm-debug.log*
 /.local-postgres/
+/.local-cache/
+.vscode/
