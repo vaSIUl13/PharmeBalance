@@ -9,3 +9,4 @@ AGENTS.md
 coverage/
 *.tsbuildinfo
 npm-debug.log*
+/.local-postgres/
