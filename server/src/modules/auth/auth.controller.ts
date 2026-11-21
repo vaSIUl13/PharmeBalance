@@ -57,7 +57,7 @@ export class AuthController {
   @fields('code')
   async mfa(@Body() body: unknown, @Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
     const challenge = cookieValue(req.headers.cookie, challengeCookie);
-    if (!challenge) throw new UnauthorizedException();
+    if (!challenge) throw new UnauthorizedException('Запит MFA завершився. Увійди знову з email і паролем.');
     const code = field(body, 'code', 22, 6);
     if (!/^(?:\d{6}|[A-Za-z0-9_-]{22})$/.test(code)) throw new BadRequestException('Invalid verification code');
     const session = await this.auth.completeMfa(challenge, code, ip(req), device(req), cookieValue(req.headers.cookie, sessionCookie));

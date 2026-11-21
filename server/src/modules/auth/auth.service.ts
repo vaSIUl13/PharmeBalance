@@ -140,7 +140,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.redis.limit('mfa:ip', ip, 20, 300);
     await this.redis.limit('mfa:challenge', hash, 5, 300);
     const pending = await this.db.authChallenge.findUnique({ where: { tokenHash: hash } });
-    if (!pending || pending.purpose !== 'MFA') throw new UnauthorizedException();
+    if (!pending || pending.purpose !== 'MFA' || pending.expiresAt.getTime() <= Date.now()) {
+      throw new UnauthorizedException('Запит MFA завершився. Увійди знову з email і паролем.');
+    }
     const result = await this.db.$transaction(async (tx) => {
       await this.lockUser(tx, pending.userId);
       const live = await tx.authChallenge.findUnique({
