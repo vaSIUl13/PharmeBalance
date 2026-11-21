@@ -11,7 +11,9 @@
     "db:migrate": "prisma migrate deploy",
     "db:status": "prisma migrate status",
     "db:seed:demo": "prisma db execute --file prisma/demo.sql --schema prisma/schema.prisma",
-    "db:seed:demo-users": "node --env-file-if-exists=.env prisma/seed-demo-users.cjs"
+    "db:seed:demo-users": "node --env-file-if-exists=.env prisma/seed-demo-users.cjs",
+    "auth:enroll-admin": "node --env-file-if-exists=.env scripts/enroll-admin-mfa.cjs",
+    "test:auth": "npm run build && node --test test/auth.integration.cjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
@@ -19,12 +21,17 @@
     "@nestjs/platform-express": "^11.0.0",
     "@nestjs/swagger": "^11.0.0",
     "@prisma/client": "^6.19.0",
+    "nodemailer": "^10.6.1",
+    "otplib": "^12.0.1",
+    "redis": "^6.3.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.0",
+    "@types/express": "^5.0.6",
     "@types/node": "^24.0.0",
+    "@types/nodemailer": "^8.0.2",
     "prisma": "^6.19.0",
     "typescript": "^5.9.0"
   }
