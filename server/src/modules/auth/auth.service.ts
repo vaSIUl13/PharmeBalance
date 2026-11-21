@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { authenticator } from 'otplib';
 import { createTransport } from 'nodemailer';
 import { PrismaService } from '../../database/prisma.service';
+import { endAssignments, lockUser } from '../users/pharmacy-assignments';
 import { AuthRedisService } from './auth-redis.service';
 import { currentHashPrefix, decryptMfa, digest, hashPassword, token, verifyPassword } from './auth-security';
 
@@ -76,10 +77,6 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
-  private async lockUser(tx: Prisma.TransactionClient, id: number) {
-    await tx.$queryRaw`SELECT user_id FROM user_account WHERE user_id = ${id} FOR UPDATE`;
-  }
-
   private audit(tx: Prisma.TransactionClient, event: string, userId?: number) {
     return tx.authAuditEvent.create({ data: { event, userId } });
   }
@@ -118,7 +115,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     }
     const replacement = account.passwordHash.startsWith(currentHashPrefix) ? undefined : await hashPassword(password);
     return this.db.$transaction(async (tx) => {
-      await this.lockUser(tx, account.userId);
+      await lockUser(tx, account.userId);
       const live = await tx.userAccount.findUnique({
         where: { userId: account.userId }, include: { role: true, authMfa: true },
       });
@@ -144,7 +141,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException('Запит MFA завершився. Увійди знову з email і паролем.');
     }
     const result = await this.db.$transaction(async (tx) => {
-      await this.lockUser(tx, pending.userId);
+      await lockUser(tx, pending.userId);
       const live = await tx.authChallenge.findUnique({
         where: { tokenHash: hash }, include: { user: { include: { authMfa: true, role: true } } },
       });
@@ -205,7 +202,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
   async logout(principal: Principal, id?: string) {
     const hashes = await this.db.$transaction(async (tx) => {
-      await this.lockUser(tx, principal.userId);
+      await lockUser(tx, principal.userId);
       const revoked = await this.revoke(tx, principal.userId, id);
       if (!id) await tx.authChallenge.deleteMany({ where: { userId: principal.userId, purpose: 'MFA' } });
       await this.audit(tx, id ? 'LOGOUT' : 'LOGOUT_ALL', principal.userId);
@@ -217,14 +214,16 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
   async setBlocked(actor: Principal, userId: number) {
     if (actor.userId === userId) throw new ForbiddenException('Cannot block your own account');
     const hashes = await this.db.$transaction(async (tx) => {
-      await this.lockUser(tx, userId);
-      const user = await tx.userAccount.findUnique({ where: { userId } });
-      if (!user) return [];
+      await lockUser(tx, userId);
+      const user = await tx.userAccount.findUnique({ where: { userId }, select: { isActive: true, role: { select: { code: true } } } });
+      if (!user?.isActive) return [];
+      await endAssignments(tx, actor.userId, userId, user.role.code);
       await tx.userAccount.update({ where: { userId }, data: { isActive: false } });
       await tx.authChallenge.deleteMany({ where: { userId } });
       const revoked = await this.revoke(tx, userId);
       await this.audit(tx, 'ACCOUNT_BLOCKED', userId);
       await this.audit(tx, 'ACCOUNT_BLOCK_ACTION', actor.userId);
+      await tx.auditLog.create({ data: { userId: actor.userId, targetUserId: userId, eventType: 'ACCOUNT_BLOCKED' } });
       return revoked;
     });
     await this.redis.rememberRevoked(hashes);
@@ -236,7 +235,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (!await verifyPassword(current, user.passwordHash)) throw new UnauthorizedException('Invalid credentials');
     const passwordHash = await hashPassword(replacement);
     const hashes = await this.db.$transaction(async (tx) => {
-      await this.lockUser(tx, user.userId);
+      await lockUser(tx, user.userId);
       const changed = await tx.userAccount.updateMany({
         where: { userId: user.userId, passwordHash: user.passwordHash, isActive: true },
         data: { passwordHash },
@@ -265,7 +264,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (!user?.isActive || !smtp || !from) return;
     const raw = token();
     await this.db.$transaction(async (tx) => {
-      await this.lockUser(tx, user.userId);
+      await lockUser(tx, user.userId);
       await tx.authChallenge.deleteMany({ where: { userId: user.userId, purpose: 'RESET' } });
       await tx.authChallenge.create({ data: {
         userId: user.userId, purpose: 'RESET', tokenHash: digest(raw), expiresAt: new Date(Date.now() + 15 * minute),
@@ -295,7 +294,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     if (!challenge || challenge.purpose !== 'RESET' || challenge.expiresAt <= new Date()) throw new UnauthorizedException();
     const passwordHash = await hashPassword(password);
     const hashes = await this.db.$transaction(async (tx) => {
-      await this.lockUser(tx, challenge.userId);
+      await lockUser(tx, challenge.userId);
       const used = await tx.authChallenge.deleteMany({
         where: { tokenHash: hash, purpose: 'RESET', expiresAt: { gt: new Date() } },
       });

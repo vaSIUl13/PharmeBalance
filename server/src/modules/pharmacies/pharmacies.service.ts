@@ -1,10 +1,31 @@
-import { ConflictException, Injectable } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { pharmacyScope } from '../auth/auth-scope';
+import type { Principal } from '../auth/auth.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 
 @Injectable()
 export class PharmaciesService {
   constructor(private readonly db: PrismaService) {}
+
+  private visibleTo(user: Principal): Prisma.PharmacyWhereInput {
+    if (user.role === 'admin' && user.permissions.includes('REFERENCE_EDIT')) return {};
+    return pharmacyScope(user);
+  }
+
+  async list(user: Principal, after: number) {
+    const rows = await this.db.pharmacy.findMany({
+      where: { AND: [this.visibleTo(user), { pharmacyId: { gt: after } }] },
+      orderBy: { pharmacyId: 'asc' }, take: 51,
+    });
+    return { items: rows.slice(0, 50), next: rows.length > 50 ? rows[49].pharmacyId : null };
+  }
+
+  async detail(user: Principal, pharmacyId: number) {
+    const row = await this.db.pharmacy.findFirst({ where: { AND: [this.visibleTo(user), { pharmacyId }] } });
+    if (!row) throw new NotFoundException('Managed pharmacy not found');
+    return row;
+  }
 
   async external(query?: string, after?: number) {
     const rows = await this.db.externalPharmacy.findMany({
