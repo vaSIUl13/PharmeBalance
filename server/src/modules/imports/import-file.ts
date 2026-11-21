@@ -6,7 +6,7 @@ export const maxRows = 5000;
 
 export type ImportError = { row: number; message: string };
 export type ImportRow = { row: number; sku: string; quantity: number; date: string; returnedQuantity: number;
-  unitPrice: string | null; replacesImportId: number | null };
+  unitPrice: string | null; replacesImportId: number | null; stockout: boolean | null };
 export type ParsedFile = { rows: ImportRow[]; total: number; errors: ImportError[] };
 
 function integer(value: unknown, csv: boolean): number | null {
@@ -34,7 +34,7 @@ export function parseFile(bytes: Buffer, format: SourceFormat, type: DataType): 
   if (bytes.length > maxBytes) return invalid('File exceeds 1 MiB');
   const csv = format === 'CSV';
   const required = type === 'SALES' ? ['sku', 'quantity', 'date'] : ['sku', 'quantity'];
-  const allowed = type === 'SALES' ? [...required, 'returnedQuantity', 'unitPrice', 'replacesImportId'] : required;
+  const allowed = type === 'SALES' ? [...required, 'returnedQuantity', 'unitPrice', 'replacesImportId', 'stockout'] : required;
   let records: unknown;
   try {
     const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
@@ -85,7 +85,13 @@ export function parseFile(bytes: Buffer, format: SourceFormat, type: DataType): 
     const key = JSON.stringify([sku, date]);
     if (seen.has(key)) { errors.push({ row, message: 'Duplicate SKU and date in file' }); continue; }
     seen.add(key);
-    rows.push({ row, sku, quantity, date, returnedQuantity, unitPrice, replacesImportId });
+    const flag = record.stockout;
+    const stockout = csv && flag === 'true' ? true : csv && flag === 'false' ? false : flag;
+    if (stockout != null && !(csv && stockout === '') && typeof stockout !== 'boolean') {
+      errors.push({ row, message: 'Invalid stockout flag' }); continue;
+    }
+    rows.push({ row, sku, quantity, date, returnedQuantity, unitPrice, replacesImportId,
+      stockout: typeof stockout === 'boolean' ? stockout : null });
   }
   return { total: records.length, rows, errors };
 }

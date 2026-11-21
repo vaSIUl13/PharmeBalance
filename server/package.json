@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "forecast:run": "node --env-file-if-exists=.env dist/modules/forecasts/worker.js",
+    "forecast:worker": "node --env-file-if-exists=.env dist/modules/forecasts/worker.js --watch",
+    "test:forecasts": "npm run build && node --test test/forecasts.test.cjs",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",

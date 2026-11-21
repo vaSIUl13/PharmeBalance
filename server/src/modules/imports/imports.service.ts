@@ -11,7 +11,7 @@ type Upload = { pharmacyId: number; dataType: DataType; sourceFormat: SourceForm
 type Position = { stockId: number; sku: string; quantity: number; asOf: Date };
 type SaleInput = ImportRow & { stockId: number };
 type PreviousSale = { stockId: number; date: string; quantity: number; returnedQuantity: number;
-  unitPrice: Prisma.Decimal | null; importId: number };
+  unitPrice: Prisma.Decimal | null; importId: number; stockout: boolean | null };
 
 const sha256 = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 
@@ -21,7 +21,7 @@ async function changedSales(tx: Prisma.TransactionClient, rows: SaleInput[], err
   if (!rows.length) return [];
   const previous = await tx.$queryRaw<PreviousSale[]>`
     SELECT s.stock_id AS "stockId", to_char(s.sale_date, 'YYYY-MM-DD') AS date, s.quantity,
-           s.returned_quantity AS "returnedQuantity", s.unit_price AS "unitPrice", s.import_id AS "importId"
+           s.returned_quantity AS "returnedQuantity", s.unit_price AS "unitPrice", s.import_id AS "importId", s.stockout
     FROM sale s JOIN jsonb_to_recordset(${JSON.stringify(rows)}::jsonb) AS r("stockId" int, date date)
       ON s.stock_id = r."stockId" AND s.sale_date = r.date`;
   const existing = new Map(previous.map(s => [saleKey(s.stockId, s.date), s]));
@@ -32,7 +32,7 @@ async function changedSales(tx: Prisma.TransactionClient, rows: SaleInput[], err
     }
     if (!old) return true;
     const samePrice = old.unitPrice === null ? row.unitPrice === null : row.unitPrice !== null && old.unitPrice.equals(row.unitPrice);
-    if (old.quantity === row.quantity && old.returnedQuantity === row.returnedQuantity && samePrice) return false;
+    if (old.quantity === row.quantity && old.returnedQuantity === row.returnedQuantity && samePrice && old.stockout === row.stockout) return false;
     if (row.replacesImportId === null) {
       errors.push({ row: row.row, message: 'Correction requires replacesImportId=' + old.importId }); return false;
     }
@@ -73,7 +73,7 @@ export class ImportsService {
     const file = parseFile(buffer, sourceFormat, dataType);
     return this.db.$transaction(async tx => {
       await lockUser(tx, user.userId);
-      const assigned = await tx.userPharmacy.findFirst({ where: { userId: user.userId, pharmacyId, unassignedAt: null,
+      const assigned = await tx.userPharmacy.findFirst({ where: { userId: user.userId, pharmacyId, unassignedAt: null, pharmacy: { isSynthetic: false },
         user: { isActive: true, role: { code: 'head', rolePermissionRows: { some: { permission: { code: 'DATA_IMPORT' } } } } } } });
       if (!assigned) throw new ForbiddenException();
       await tx.$queryRaw`SELECT pharmacy_id FROM pharmacy WHERE pharmacy_id = ${pharmacyId} FOR UPDATE`;
@@ -111,13 +111,13 @@ export class ImportsService {
         await tx.$executeRaw`UPDATE stock_item s SET quantity = r.quantity, quantity_as_of = ${snapshotAt}, updated_at = clock_timestamp()
           FROM jsonb_to_recordset(${payload}::jsonb) AS r("stockId" int, quantity int) WHERE s.stock_id = r."stockId"`;
       } else {
-        await tx.$executeRaw`INSERT INTO sale(stock_id, sale_date, quantity, returned_quantity, unit_price, source_row, import_id)
-          SELECT "stockId", date, quantity, "returnedQuantity", "unitPrice", row, ${batch.importId}
+        await tx.$executeRaw`INSERT INTO sale(stock_id, sale_date, quantity, returned_quantity, unit_price, source_row, import_id, stockout)
+          SELECT "stockId", date, quantity, "returnedQuantity", "unitPrice", row, ${batch.importId}, stockout
           FROM jsonb_to_recordset(${payload}::jsonb) AS r("stockId" int, date date, quantity int,
-            "returnedQuantity" int, "unitPrice" numeric, row int)
+            "returnedQuantity" int, "unitPrice" numeric, row int, stockout boolean)
           ON CONFLICT (stock_id, sale_date) DO UPDATE SET quantity = excluded.quantity,
             returned_quantity = excluded.returned_quantity, unit_price = excluded.unit_price,
-            source_row = excluded.source_row, import_id = excluded.import_id`;
+            source_row = excluded.source_row, import_id = excluded.import_id, stockout = excluded.stockout`;
       }
       return batch;
     }, { timeout: 30000 });
