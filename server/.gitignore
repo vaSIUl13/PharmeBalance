@@ -1,4 +1,5 @@
 node_modules/
 dist/
 docs/
+examples/
 !docs/pharmacy-user-management.md

@@ -176,6 +176,7 @@ model RolePermission {
 }
 
 model StockItem {
+  quantityAsOf DateTime @default(now()) @map("quantity_as_of") @db.Timestamptz(3)
   stockId Int @id @default(autoincrement()) @map("stock_id")
   pharmacyId Int @map("pharmacy_id")
   drugId Int @map("drug_id")
@@ -270,7 +271,19 @@ model Forecast {
   @@map("forecast")
 }
 
+enum ImportStatus {
+  LEGACY
+  APPLIED
+  REJECTED
+}
+
 model ImportBatch {
+  status ImportStatus @default(LEGACY)
+  requestKey String? @unique @map("request_key") @db.Char(64)
+  checksum String? @db.Char(64)
+  snapshotAt DateTime? @map("snapshot_at") @db.Timestamptz(3)
+  recordsApplied Int @default(0) @map("records_applied")
+  errors Json @default("[]")
   isSynthetic Boolean @default(false) @map("is_synthetic")
   syntheticKey String? @unique @map("synthetic_key")
   importId Int @id @default(autoincrement()) @map("import_id")
@@ -286,6 +299,7 @@ model ImportBatch {
   saleRows Sale[] @relation("fk_sale_import_id")
 
   @@index([uploadedBy, pharmacyId], map: "fk_import_batch_uploaded_by_pharmacy_id_idx")
+  @@index([pharmacyId, importId])
   @@map("import_batch")
 }
 

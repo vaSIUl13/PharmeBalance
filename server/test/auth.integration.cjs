@@ -102,6 +102,11 @@ test('auth against PostgreSQL and Redis', async (t) => {
   const specResponse = await fetch((await app.getUrl()) + '/openapi.json');
   assert.equal(specResponse.status, 200);
   const spec = await specResponse.json();
+  for (const route of ['stocks', 'sales']) {
+    const form = spec.paths['/api/v1/imports/' + route].post.requestBody.content['multipart/form-data'].schema;
+    assert.equal(form.properties.file.format, 'binary');
+    assert(form.required.includes('pharmacyId'));
+  }
   for (const path of ['/roles', '/users', '/audit', '/pharmacies']) {
     assert.ok(spec.paths['/api/v1' + path].get);
   }
@@ -122,6 +127,8 @@ test('auth against PostgreSQL and Redis', async (t) => {
   const transferIds = [];
   t.after(async () => {
     const ids = Object.values(accounts).map((user) => user.userId);
+    await db.sale.deleteMany({ where: { import: { uploadedBy: { in: ids } } } });
+    await db.importBatch.deleteMany({ where: { uploadedBy: { in: ids } } });
     await db.auditLog.deleteMany({ where: { userId: { in: ids } } });
     await db.authAuditEvent.deleteMany({ where: { userId: { in: ids } } });
     await db.userPharmacy.deleteMany({ where: { userId: { in: ids } } });
@@ -355,6 +362,75 @@ test('auth against PostgreSQL and Redis', async (t) => {
     const path = '/stocks?pharmacyId=' + pharmacyId + '&sku=' + encodeURIComponent(base.sku);
     assert.deepEqual((await (await request(path, { cookies: admin })).json()).map(row => row.stockId), [stock.stockId]);
     assert.deepEqual(await (await request(path, { cookies: head })).json(), []);
+  });
+
+  await t.test('multipart imports enforce assignment, atomicity, replay and correction policy', async () => {
+    const pharmacyId = pharmacyIds[0];
+    const stock = await db.stockItem.findUniqueOrThrow({ where: { stockId: stockIds[0] }, include: { drug: true } });
+    const { sku } = stock.drug;
+    const assignment = { userId: accounts.head.userId, pharmacyId };
+    await db.userPharmacy.update({ where: { userId_pharmacyId: assignment }, data: { unassignedAt: null } });
+    const instant = new Date().toISOString();
+    const snapshot = 'sku,quantity\n' + sku + ',17';
+    async function upload(type, file, { id = pharmacyId, cookies = head, at = instant, ext = 'csv' } = {}) {
+      const form = new FormData();
+      form.append('pharmacyId', String(id));
+      if (type === 'stocks') form.append('snapshotAt', at);
+      form.append('file', new Blob([file]), 'sample.' + ext);
+      return fetch(root + '/imports/' + type, { method: 'POST', body: form,
+        headers: { Cookie: cookies, Origin: process.env.AUTH_ORIGIN, 'X-Pharme-CSRF': '1' } });
+    }
+    for (const options of [{ cookies: manager }, { cookies: admin }, { id: pharmacyIds[1] }]) {
+      assert.equal((await upload('stocks', snapshot, options)).status, 403);
+    }
+    assert.equal((await upload('stocks', 'x'.repeat(1024*1024+1))).status, 413);
+    const bad = await upload('stocks', snapshot + '\nUNKNOWN-' + run + ',2');
+    assert.equal(bad.status, 422);
+    assert.equal((await bad.json()).errors[0].row, 2);
+    const malformed = await upload('sales', '{', { ext: 'json' });
+    assert.equal(malformed.status, 422);
+    const rejected = await malformed.json();
+    assert.equal(rejected.errors[0].row, 0);
+    assert.equal((await (await upload('sales', '{', { ext: 'json' })).json()).importId, rejected.importId);
+    assert.equal((await db.stockItem.findUniqueOrThrow({ where: { stockId: stock.stockId } })).quantity, stock.quantity);
+    const receipts = await Promise.all([upload('stocks', snapshot), upload('stocks', snapshot)]);
+    assert.deepEqual(receipts.map(r => r.status), [200, 200]);
+    const [first, repeat] = await Promise.all(receipts.map(r => r.json()));
+    assert.equal(first.importId, repeat.importId);
+    assert.equal(first.recordsApplied, 1);
+    const current = () => db.stockItem.findUniqueOrThrow({ where: { stockId: stock.stockId } });
+    assert.equal((await current()).quantity, 17);
+    assert.equal((await upload('stocks', snapshot.replace(',17', ',18'))).status, 422);
+    assert.equal((await upload('stocks', snapshot, { at: '2020-01-01T00:00:00Z' })).status, 422);
+    await db.stockItem.update({ where: { stockId: stock.stockId }, data: { quantity: { decrement: 1 } } });
+    assert((await current()).quantityAsOf > new Date(instant));
+    assert.equal((await upload('stocks', snapshot + '\n')).status, 422);
+    assert.equal((await current()).quantity, 16);
+    const date = '2025-03-02';
+    const submit = rows => upload('sales', JSON.stringify(rows), { ext: 'json' });
+    const row = { sku, date, quantity: 5, unitPrice: '12.50' };
+    const sales = await submit([row]);
+    assert.equal(sales.status, 200);
+    const original = await sales.json();
+    assert.equal((await (await submit([row])).json()).importId, original.importId);
+    assert.equal((await submit([row, row])).status, 422);
+    const mixed = await submit([{ ...row, date: '2025-03-01' }, { ...row, quantity: 25 }]);
+    assert.equal(mixed.status, 422);
+    assert.equal(await db.sale.count({ where: { stockId: stock.stockId } }), 1);
+    assert.equal((await submit([{ ...row, quantity: 2 }])).status, 422);
+    const correction = quantity => submit([{ ...row, quantity, replacesImportId: original.importId }]);
+    const concurrent = await Promise.all([correction(3), correction(4)]);
+    assert.deepEqual(concurrent.map(r => r.status).sort(), [200, 422]);
+    const saved = await db.sale.findMany({ where: { stockId: stock.stockId } });
+    assert.equal(saved.length, 1);
+    assert([3, 4].includes(saved[0].quantity));
+    assert.equal((await current()).quantity, 16);
+    const path = '/imports/' + first.importId;
+    assert.equal((await request(path, { cookies: head })).status, 200);
+    assert((await (await request('/imports', { cookies: head })).json()).items.some(b => b.importId === first.importId));
+    await db.userPharmacy.update({ where: { userId_pharmacyId: assignment }, data: { unassignedAt: new Date() } });
+    assert.equal((await request(path, { cookies: head })).status, 404);
+    assert.deepEqual((await (await request('/imports', { cookies: head })).json()).items, []);
   });
 
   await t.test('selected session revocation, ownership checks, and logout all', async () => {
