@@ -1,0 +1,11 @@
+.codex
+AGENTS.md
+
+.env
+.env.*
+!.env.example
+
+# Local build and test artifacts
+coverage/
+*.tsbuildinfo
+npm-debug.log*
