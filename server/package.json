@@ -14,6 +14,7 @@
     "db:seed:demo-users": "node --env-file-if-exists=.env prisma/seed-demo-users.cjs",
     "auth:enroll-admin": "node --env-file-if-exists=.env scripts/enroll-admin-mfa.cjs",
     "test:auth": "npm run build && node --test test/auth.integration.cjs",
+    "test:imports": "npm run build && node --test test/import-file.test.cjs",
     "catalog:sync": "node --env-file-if-exists=.env scripts/catalog/sync.cjs",
     "catalog:link-sku": "node --env-file-if-exists=.env scripts/catalog/link-sku.cjs",
     "db:seed:demo-network": "node --env-file-if-exists=.env scripts/catalog/demo.cjs",
