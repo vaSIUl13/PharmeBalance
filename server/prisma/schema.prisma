@@ -13,6 +13,7 @@ enum DataScope {
 }
 
 enum RecommendationStatus {
+  STALE @map("Застаріла")
   CREATED @map("Сформована")
   CONFIRMED @map("Підтверджена")
   REJECTED @map("Відхилена")
@@ -176,6 +177,7 @@ model RolePermission {
 }
 
 model StockItem {
+  reservedQuantity Int @default(0) @map("reserved_quantity")
   quantityAsOf DateTime @default(now()) @map("quantity_as_of") @db.Timestamptz(3)
   stockId Int @id @default(autoincrement()) @map("stock_id")
   pharmacyId Int @map("pharmacy_id")
@@ -269,6 +271,8 @@ model ForecastRun {
 }
 
 model Forecast {
+  redistributionReason String? @map("redistribution_reason")
+  recommendation Recommendation?
   runId Int? @map("run_id")
   run ForecastRun? @relation(fields: [runId], references: [id])
   abcClass AbcClass? @map("abc_class")
@@ -328,11 +332,16 @@ model ImportBatch {
 }
 
 model Recommendation {
+  forecastId Int? @unique @map("forecast_id")
+  forecast Forecast? @relation(fields: [forecastId], references: [forecastId])
+  distanceKm Decimal? @db.Decimal(7,2) @map("distance_km")
+  distanceSource Source? @map("distance_source")
+  uncoveredQuantity Decimal? @db.Decimal(14,0) @map("uncovered_quantity")
   recommendationId Int @id @default(autoincrement()) @map("recommendation_id")
   recipientStockId Int @map("recipient_stock_id")
   donorStockId Int @map("donor_stock_id")
   quantity Int
-  priority Int @db.SmallInt
+  priority Int
   status RecommendationStatus @default(CREATED)
   createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
   donorStock StockItem @relation("fk_recommendation_donor_stock_id", fields: [donorStockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_donor_stock_id")

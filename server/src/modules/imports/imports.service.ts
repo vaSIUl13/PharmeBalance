@@ -8,7 +8,7 @@ import { parseFile, type ImportError, type ImportRow } from './import-file';
 
 type Upload = { pharmacyId: number; dataType: DataType; sourceFormat: SourceFormat; snapshotAt?: Date;
   fileName: string; buffer: Buffer };
-type Position = { stockId: number; sku: string; quantity: number; asOf: Date };
+type Position = { stockId: number; sku: string; quantity: number; asOf: Date; reserved: number };
 type SaleInput = ImportRow & { stockId: number };
 type PreviousSale = { stockId: number; date: string; quantity: number; returnedQuantity: number;
   unitPrice: Prisma.Decimal | null; importId: number; stockout: boolean | null };
@@ -81,7 +81,7 @@ export class ImportsService {
       if (repeat) return repeat;
       const skus = [...new Set(file.rows.map(row => row.sku))];
       const positions = skus.length ? await tx.$queryRaw<Position[]>`
-        SELECT s.stock_id AS "stockId", d.sku, s.quantity, s.quantity_as_of AS "asOf"
+        SELECT s.stock_id AS "stockId", d.sku, s.quantity, s.quantity_as_of AS "asOf", s.reserved_quantity AS reserved
         FROM stock_item s JOIN drug d ON s.drug_id = d.drug_id
         WHERE s.pharmacy_id = ${pharmacyId} AND d.sku IN (${Prisma.join(skus)})
         ORDER BY s.stock_id FOR UPDATE OF s` : [];
@@ -92,6 +92,9 @@ export class ImportsService {
         const stock = bySku.get(row.sku);
         if (!stock) { errors.push({ row: row.row, message: 'Unknown stock SKU in this pharmacy' }); continue; }
         if (snapshotAt) {
+          if (row.quantity < stock.reserved) {
+            errors.push({ row: row.row, message: 'Stock snapshot is below active reservations' }); continue;
+          }
           if (snapshotAt < stock.asOf || (+snapshotAt === +stock.asOf && stock.quantity !== row.quantity)) {
             errors.push({ row: row.row, message: 'Stale or conflicting stock snapshot' }); continue;
           }
