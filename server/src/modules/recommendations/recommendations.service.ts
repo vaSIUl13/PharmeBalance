@@ -81,7 +81,12 @@ export class RecommendationsService {
       const save = async (transition: typeof action) => {
         await tx.recommendation.update({ where: { recommendationId: id }, data: { status: transition.toStatus } });
         await tx.recommendationAction.create({ data: { recommendationId: id, actionTypeId: transition.actionTypeId,
-          userId: user.userId, quantity: amount, comment } });
+          userId: user.userId, quantity: amount, comment,
+          ...(transition.code === 'STALE' ? {} : { emailEvent: { create: {
+            donor: record.donorStock.pharmacy.name, recipient: record.recipientStock.pharmacy.name,
+            sku: record.donorStock.drug.sku, drugName: record.donorStock.drug.name,
+          } } }),
+        } });
         return { recommendationId: id, status: transition.toStatus, replayed: false };
       };
       if (command === 'CONFIRM' && donor && recipient) {

@@ -9,6 +9,11 @@ const { createClient } = require('redis');
 const { authenticator } = require('otplib');
 const { AppModule } = require('../dist/app.module');
 const { setupSwagger } = require('../dist/config/swagger');
+const { Workbook } = require('exceljs');
+const { parse: parseCsv } = require('csv-parse/sync');
+const { metrics } = require('../dist/modules/reports/report-format');
+const { EmailService } = require('../dist/modules/notifications/email.service');
+const { NotificationsService } = require('../dist/modules/notifications/notifications.service');
 const { digest, encryptMfa } = require('../dist/modules/auth/auth-security');
 
 async function captureResetMail(send) {
@@ -74,6 +79,7 @@ test('auth against PostgreSQL and Redis', async (t) => {
   process.env.AUTH_REDIS_PREFIX = 'pharme:test:' + run;
   process.env.AUTH_MFA_KEY = randomBytes(32).toString('base64');
   process.env.AUTH_ORIGIN = 'https://pharme.test';
+  process.env.EMAIL_ENABLED = 'false';
   delete process.env.AUTH_SMTP_URL;
 
   const db = new PrismaClient();
@@ -454,7 +460,7 @@ test('auth against PostgreSQL and Redis', async (t) => {
     assert.deepEqual((await (await request('/imports', { cookies: head })).json()).items, []);
   });
 
-  await t.test('redistribution reserves at confirmation and moves physical stock at receipt', async () => {
+  await t.test('redistribution reserves at confirmation and moves physical stock at receipt', async transferTest => {
     const [recipientId, donorId] = stockIds;
     const [recipientPharmacy, donorPharmacy] = pharmacyIds;
     const recipient = await db.stockItem.update({ where: { stockId: recipientId }, data: { msl: 20, maxLevel: 30 } });
@@ -559,6 +565,137 @@ test('auth against PostgreSQL and Redis', async (t) => {
     } })).status, 200);
     assert.equal((await act('CONFIRM', manager, {}, stale.recommendationId)).status, 409);
     assert.equal((await db.recommendation.findUniqueOrThrow({ where: { recommendationId: stale.recommendationId } })).status, 'STALE');
+    await transferTest.test('period report matches SQL milestones and both downloads', async () => {
+      const [{ day }] = await db.$queryRaw`SELECT to_char(now() AT TIME ZONE 'Europe/Kyiv', 'YYYY-MM-DD') AS day`;
+      const path = '?from=' + day + '&to=' + day + '&pharmacyId=' + recipientPharmacy;
+      const response = await request('/reports/summary' + path, { cookies: manager });
+      assert.equal(response.status, 200, await response.clone().text());
+      const report = await response.json();
+      assert.equal(report.period.timeZone, 'Europe/Kyiv');
+      const [control] = await db.$queryRaw`SELECT count(*)::int AS completed, sum(a.quantity)::int AS units
+        FROM recommendation_action a JOIN action_type t USING(action_type_id)
+        WHERE t.code='RECEIVE' AND a.recommendation_id=${id} AND
+          (a.action_time AT TIME ZONE 'Europe/Kyiv')::date=${day}::date`;
+      assert.equal(report.totals.completed, control.completed);
+      assert.equal(report.totals.movedUnits, control.units);
+      assert.equal(report.totals.movedUnits, 100);
+      assert(report.totals.confirmed >= 1 && report.totals.dispatched === 1);
+      for (const session of [head, logist, admin]) {
+        assert.equal((await request('/reports/summary' + path, { cookies: session })).status, 403);
+      }
+      assert.equal((await request('/reports/summary?from=2026-02-30&to=2026-03-01', { cookies: manager })).status, 400);
+      const csv = await request('/reports/export' + path + '&format=csv', { cookies: manager });
+      assert.equal(csv.status, 200, await csv.clone().text());
+      const csvValues = new Map(parseCsv(await csv.text(), { bom: true }));
+      const xlsx = await request('/reports/export' + path + '&format=xlsx', { cookies: manager });
+      assert.equal(xlsx.status, 200);
+      const workbook = new Workbook();
+      await workbook.xlsx.load(await xlsx.arrayBuffer());
+      const xlsxValues = new Map();
+      workbook.getWorksheet(1).eachRow(row => xlsxValues.set(row.getCell(1).value, row.getCell(2).value));
+      for (const [key, label] of Object.entries(metrics)) {
+        assert.equal(csvValues.get(label), String(report.totals[key]));
+        assert.equal(xlsxValues.get(label), report.totals[key]);
+      }
+      const empty = await request('/reports/summary?from=1900-01-01&to=1900-01-01', { cookies: manager });
+      assert(Object.values((await empty.json()).totals).every(value => value === 0));
+      const latest = await db.forecastRun.create({ data: { asOf: new Date('2004-03-28'), synthetic: false, version: run, policy: {} } });
+      const revised = await db.forecastRun.create({ data: { asOf: latest.asOf, synthetic: false, version: run + '-r', policy: {} } });
+      forecastRunIds.push(latest.id, revised.id);
+      await db.forecast.createMany({ data: [latest.id, revised.id].map(runId => ({
+        runId, stockId: recipientId, modelVersion: 'fixture', shortageProbability: 0.5, currentSurplus: 5,
+      })) });
+      const daily = await request('/reports/summary?from=2004-03-28&to=2004-03-28&pharmacyId=' + recipientPharmacy, { cookies: manager });
+      const { totals } = await daily.json();
+      assert.deepEqual([totals.shortageRisks, totals.surplusPositions], [1, 1]);
+      for (const timestamp of ['2004-03-27T21:59:59.999Z', '2004-03-27T22:00:00Z',
+        '2004-03-28T20:59:59.999Z', '2004-03-28T21:00:00Z']) {
+        const boundary = await db.recommendation.create({ data: { donorStockId: donorId, recipientStockId: recipientId,
+          quantity: 1, priority: 4, createdAt: new Date(timestamp), status: 'CANCELLED' } });
+        transferIds.push(boundary.recommendationId);
+      }
+      const bounds = await request('/reports/summary?from=2004-03-28&to=2004-03-28&pharmacyId=' + recipientPharmacy, { cookies: manager });
+      assert.equal((await bounds.json()).totals.recommendations, 2);
+    });
+
+    await transferTest.test('transfer outbox rolls back, retries and delivers once per eligible recipient', async emailTest => {
+      const events = await db.emailEvent.findMany({ where: { action: { recommendationId: id } },
+        include: { action: { include: { actionType: true } } }, orderBy: { actionId: 'asc' } });
+      assert.deepEqual(events.map(e => e.action.actionType.code), ['CONFIRM', 'DISPATCH', 'RECEIVE']);
+      assert.equal(await db.emailEvent.count({ where: { action: { recommendationId: stale.recommendationId } } }), 0);
+      const rejectedDraft = await db.recommendation.create({ data: { donorStockId: donorId, recipientStockId: recipientId,
+        quantity: 1, priority: 3 } });
+      transferIds.push(rejectedDraft.recommendationId);
+      const rejectedType = await db.actionType.findUniqueOrThrow({ where: { code: 'REJECT' } });
+      await assert.rejects(db.$transaction(async tx => {
+        await tx.recommendationAction.create({ data: { actionTypeId: rejectedType.actionTypeId, userId: accounts.manager.userId,
+          recommendationId: rejectedDraft.recommendationId, emailEvent: { create: { donor: 'D', recipient: 'R', sku, drugName: 'Test' } } } });
+        throw Error('rollback outbox');
+      }), /rollback outbox/);
+      assert.equal(await db.emailEvent.count({ where: { action: { recommendationId: rejectedDraft.recommendationId } } }), 0);
+      assert.equal((await act('REJECT', manager, {}, rejectedDraft.recommendationId)).status, 200);
+      if (process.env.AUTH_TEST_MAILPIT !== '1') return emailTest.diagnostic('SMTP integration is opt-in with AUTH_TEST_MAILPIT=1');
+      accounts.sameMailbox = await db.userAccount.create({ data: { login: 'alias-' + run,
+        email: accounts.logist.email.toUpperCase(), firstName: 'Alias', lastName: 'Test',
+        roleId: accounts.logist.roleId, passwordHash: 'disabled-test' } });
+      await db.userPharmacy.create({ data: { userId: accounts.sameMailbox.userId, pharmacyId: donorPharmacy } });
+      const unassignedTransfer = await db.recommendation.create({ data: { donorStockId: donorId,
+        recipientStockId: other.stockId, quantity: 1, priority: 4 } });
+      transferIds.push(unassignedTransfer.recommendationId);
+      const dispatch = await db.actionType.findUniqueOrThrow({ where: { code: 'DISPATCH' } });
+      const missing = await db.recommendationAction.create({ data: { actionTypeId: dispatch.actionTypeId,
+        userId: accounts.logist.userId, recommendationId: unassignedTransfer.recommendationId,
+        emailEvent: { create: { donor: 'D', recipient: 'R', sku, drugName: 'Test' } } } });
+      const conf = { EMAIL_ENABLED: 'true', EMAIL_PROVIDER: 'smtp', SMTP_HOST: '127.0.0.1', SMTP_PORT: '1',
+        SMTP_SECURE: 'false', EMAIL_FROM: 'PharmaBalance <notifications@pharmabalance.test>', SMTP_USER: '', SMTP_PASSWORD: '' };
+      const previous = Object.fromEntries(Object.keys(conf).map(key => [key, process.env[key]]));
+      Object.assign(process.env, conf);
+      const failedTransport = new EmailService();
+      try {
+        const unavailable = new NotificationsService(db, failedTransport);
+        await unavailable.processOne();
+        const prior = await db.emailDelivery.findFirstOrThrow({ where: { attempts: 1, acceptedAt: null } });
+        assert(prior.nextAttemptAt > new Date() && prior.lastError);
+        await db.emailDelivery.update({ where: { id: prior.id }, data: { nextAttemptAt: new Date(), attempts: 4 } });
+        await unavailable.processOne();
+        const failed = await db.emailDelivery.findUniqueOrThrow({ where: { id: prior.id } });
+        assert(failed.failedAt);
+        const retryUrl = '/notifications/failed/' + prior.id + '/retry';
+        assert.equal((await post(retryUrl)).status, 403);
+        assert.equal((await post(retryUrl, admin)).status, 204);
+        assert.equal((await post(retryUrl, admin)).status, 404);
+        process.env.SMTP_PORT = '1025';
+        const smtp = new EmailService();
+        try {
+          const first = new NotificationsService(db, smtp);
+          const restarted = new NotificationsService(db, smtp);
+          for (let i = 0; i < 20; i++) {
+            if (!(await Promise.all([first.processOne(), restarted.processOne()])).some(Boolean)) break;
+          }
+          const sent = await db.emailDelivery.findMany({ where: { actionId: { in: events.map(e => e.actionId) } } });
+          assert.equal(sent.length, 3);
+          assert(sent.every(delivery => delivery.acceptedAt));
+          const noRecipient = await db.emailEvent.findUniqueOrThrow({ where: { actionId: missing.actionId } });
+          assert.deepEqual(noRecipient.missingRoles, ['head']);
+          assert.equal(noRecipient.recipientCount, 0);
+          assert.deepEqual(sent.map(delivery => delivery.userId).sort(),
+            [accounts.logist.userId, accounts.head.userId, accounts.manager.userId].sort());
+          assert.equal((await db.emailDelivery.findUniqueOrThrow({ where: { id: prior.id } })).attempts, 1);
+          const inbox = await (await fetch('http://127.0.0.1:8025/api/v1/messages?limit=50')).json();
+          const transferMessages = inbox.messages.filter(message => message.Subject.includes('#' + id + ' ·'));
+          assert.equal(transferMessages.length, 3);
+          const letter = await (await fetch('http://127.0.0.1:8025/api/v1/message/' + transferMessages[0].ID)).json();
+          assert.match(letter.HTML, /<table/);
+          assert.match(letter.Text, new RegExp(sku));
+        } finally { smtp.onModuleDestroy(); }
+      } finally {
+        failedTransport.onModuleDestroy();
+        for (const [key, value] of Object.entries(previous)) {
+          if (value === undefined) delete process.env[key];
+          else process.env[key] = value;
+        }
+      }
+    });
     await db.recommendationAction.deleteMany({ where: { recommendationId: id } });
     await db.userPharmacy.update({ where: { userId_pharmacyId: { userId: accounts.head.userId, pharmacyId: recipientPharmacy } },
       data: { unassignedAt: new Date() } });
