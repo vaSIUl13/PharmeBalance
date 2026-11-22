@@ -3,3 +3,5 @@ dist/
 docs/
 examples/
 !docs/pharmacy-user-management.md
+
+redistribution.md
