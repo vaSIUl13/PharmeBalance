@@ -5,7 +5,7 @@ import { useResource } from "@/lib/head/use-resource";
 import { formatNumber } from "@/lib/head/format";
 import { exportUrl, loadPharmacies, loadSummary } from "@/lib/manager/api";
 import { isoDay } from "@/lib/manager/format";
-import { Icon } from "@/components/head/icon";
+import { Icon } from "@/components/ui/icon";
 import { buttonClasses, Card, inputClasses, Kpi, Notice, PageHeader, ProgressBar, ResourceGate } from "@/components/head/ui";
 
 type Range = { from: string; to: string; pharmacyId?: number };

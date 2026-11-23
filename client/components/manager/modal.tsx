@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, type ReactNode } from "react";
-import { Icon } from "@/components/head/icon";
+import { Icon } from "@/components/ui/icon";
 
 export function Modal({ title, subtitle, busy, onClose, children }: {
   title: string;

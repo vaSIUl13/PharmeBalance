@@ -2,6 +2,7 @@
 
 import { useState, useSyncExternalStore, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Icon } from "@/components/ui/icon";
 import { AuthCard, AuthLink } from "@/components/auth/auth-card";
 import { AuthFeedback, AuthField, AuthSubmit } from "@/components/auth/auth-fields";
 import styles from "@/components/auth/auth.module.css";
@@ -52,7 +53,7 @@ export default function ResetPassword() {
   return (
     <AuthCard title={token ? "Новий пароль" : "Відновлення пароля"}
       description={token ? "Введіть і підтвердьте новий пароль." : "Вкажіть email облікового запису — ми надішлемо посилання для скидання пароля"}
-      footer={<AuthLink href="/login">→ Повернутися до входу</AuthLink>}
+      footer={<AuthLink href="/login"><span className="inline-flex items-center gap-1.5"><Icon name="arrow_right" size={14} />Повернутися до входу</span></AuthLink>}
     >
       <form className={styles.form} onSubmit={submit} method="post" key={String(Boolean(token))}>
         {token ? (

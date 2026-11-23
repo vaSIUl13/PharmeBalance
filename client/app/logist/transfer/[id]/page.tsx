@@ -4,7 +4,6 @@ import { Suspense } from "react";
 import { TransferView } from "@/components/logist/transfer-view";
 
 export const metadata: Metadata = { title: "Картка рейсу · PharmaBalance" };
-
 export default function LogistTransferPage({ params }: PageProps<"/logist/transfer/[id]">) {
   return (
     <Suspense fallback={<p role="status" className="text-sm text-[#64748b]">Завантаження…</p>}>

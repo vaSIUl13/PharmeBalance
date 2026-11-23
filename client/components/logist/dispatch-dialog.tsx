@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/auth";
 import { formatDrug } from "@/lib/head/format";
 import type { TransferDetail } from "@/lib/head/types";
 import { dispatchTransfer } from "@/lib/logist/api";
-import { Icon } from "@/components/head/icon";
+import { Icon } from "@/components/ui/icon";
 import { buttonClasses, inputClasses, Notice } from "@/components/head/ui";
 
 const conflictMessage = "Статус переміщення змінився або резерв більше недоступний. Дані оновлено, перевірте картку.";

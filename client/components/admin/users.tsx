@@ -5,7 +5,7 @@ import { loadPharmacies, loadPrincipal, loadUsers } from "@/lib/admin/api";
 import { fullName, roleCodes, roleLabels } from "@/lib/admin/format";
 import type { AdminUser, RoleCode } from "@/lib/admin/types";
 import { useResource } from "@/lib/head/use-resource";
-import { Icon } from "@/components/head/icon";
+import { Icon } from "@/components/ui/icon";
 import { Badge, buttonClasses, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
 import { AccessDialog, BlockDialog, CreateUserDialog } from "./user-dialogs";
 

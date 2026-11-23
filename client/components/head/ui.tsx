@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { ApiError } from "@/lib/auth";
 import type { Tone } from "@/lib/head/format";
-import { Icon, type IconName } from "./icon";
+import { Icon, type IconName } from "@/components/ui/icon";
 
 const toneClasses: Record<Tone, string> = {
   danger: "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]",

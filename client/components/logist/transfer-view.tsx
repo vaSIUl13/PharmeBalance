@@ -7,7 +7,7 @@ import { formatDateTime, formatDrug } from "@/lib/head/format";
 import { useResource } from "@/lib/head/use-resource";
 import { distance, formatKm } from "@/lib/logist/format";
 import { loadTransfer } from "@/lib/logist/api";
-import { Icon } from "@/components/head/icon";
+import { Icon } from "@/components/ui/icon";
 import { buttonClasses, Card, EmptyState, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
 import { DispatchDialog } from "./dispatch-dialog";
 import { RouteStops, TripStatus } from "./trip-parts";
@@ -28,7 +28,7 @@ export function TransferView({ id }: { id: number }) {
 
   return (
     <>
-      <Link href="/logist/queue" className={buttonClasses.secondary + " w-fit"}>← До черги</Link>
+      <Link href="/logist/queue" className={buttonClasses.secondary + " w-fit"}><Icon name="arrow_left" size={14} />До черги</Link>
       {message && <Notice tone="success">{message}</Notice>}
       {missing
         ? <Card><EmptyState title="Рейс не знайдено" hint="Він недоступний для вашого облікового запису" /></Card>

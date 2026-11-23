@@ -6,7 +6,7 @@ import { formatNumber, formatProbability, riskLevels } from "@/lib/head/format";
 import { useResource } from "@/lib/head/use-resource";
 import { loadForecastPage, loadPharmacies, loadSummary } from "@/lib/manager/api";
 import { isoDay } from "@/lib/manager/format";
-import { Icon } from "@/components/head/icon";
+import { Icon } from "@/components/ui/icon";
 import { Badge, buttonClasses, Card, EmptyState, Kpi, PageHeader, ResourceGate } from "@/components/head/ui";
 
 const loadMonthSummary = () => loadSummary(isoDay(-30), isoDay());

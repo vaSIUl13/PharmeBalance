@@ -6,7 +6,7 @@ import { loadImport, loadImports, uploadImport } from "@/lib/head/api";
 import { formatDateTime, formatNumber, importKinds, importStatuses } from "@/lib/head/format";
 import type { ImportBatch, ImportDetail, ImportKind } from "@/lib/head/types";
 import { useResource } from "@/lib/head/use-resource";
-import { Icon } from "./icon";
+import { Icon } from "@/components/ui/icon";
 import { useHeadSession } from "./head-session";
 import { Badge, buttonClasses, Card, EmptyState, inputClasses, Notice, PageHeader, ResourceGate } from "./ui";
 

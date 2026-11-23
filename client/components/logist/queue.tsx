@@ -6,7 +6,7 @@ import { loadTransfers } from "@/lib/head/api";
 import { useResource } from "@/lib/head/use-resource";
 import { byQueueOrder, distance, formatKm } from "@/lib/logist/format";
 import type { TransferDetail } from "@/lib/head/types";
-import { Icon } from "@/components/head/icon";
+import { Icon } from "@/components/ui/icon";
 import { buttonClasses, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
 import { DispatchDialog } from "./dispatch-dialog";
 import { DrugLine, RouteStops, TripStatus } from "./trip-parts";
