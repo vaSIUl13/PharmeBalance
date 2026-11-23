@@ -28,6 +28,7 @@
     "build:test": "tsc -p tsconfig.test.json",
     "test:forecast:isolation": "npm run build:test && node --test dist-test/test/forecast-isolation.integration.js",
     "test:forecast:demo": "npm run build:test && node --test dist-test/test/forecast-demo.integration.js",
+    "auth:provision-superadmin": "node --env-file-if-exists=.env dist/cli/provision-superadmin.js",
     "preauth:enroll-admin": "npm run build",
     "predb:seed:demo-users": "npm run build"
   },

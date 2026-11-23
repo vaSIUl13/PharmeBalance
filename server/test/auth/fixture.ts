@@ -79,7 +79,7 @@ export async function createFixture(t: TestContext) {
     await db.pharmacy.deleteMany({ where: { pharmacyId: { in: [...pharmacyIds, ...managedIds] } } });
   });
 
-  for (const role of ['admin', 'manager', 'head', 'logist']) {
+  for (const role of ['admin', 'manager', 'head', 'logist', 'superadmin']) {
     const email = role + '.' + run + '@example.com';
     const nonce = randomBytes(16);
     const key = argon2Sync('argon2id', { nonce, message: Buffer.from(password), memory: 19456, passes: 2, parallelism: 1, tagLength: 32 });

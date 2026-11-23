@@ -14,6 +14,7 @@ export class UsersService {
 
   roles() {
     return this.db.role.findMany({
+      where: { code: { not: 'superadmin' } },
       select: { code: true, name: true, dataScope: true }, orderBy: { code: 'asc' },
     });
   }
@@ -61,6 +62,7 @@ export class UsersService {
       await lockUser(tx, userId);
       const user = await tx.userAccount.findUnique({ where: { userId }, select: userFields });
       if (!user) throw new NotFoundException('User not found');
+      if (user.role.code === 'superadmin') throw new ForbiddenException('Cannot edit a superadministrator');
       if (!user.isActive) throw new ConflictException('Account is blocked');
       const role = access.role ?? user.role.code;
       if (role !== user.role.code) {

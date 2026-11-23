@@ -1,3 +1,4 @@
+import { isAdministrativeRole } from '../modules/auth/administrative-role';
 import { randomBytes } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { authenticator } from 'otplib';
@@ -26,7 +27,7 @@ async function main() {
       const user = await tx.userAccount.findUniqueOrThrow({
         where: { userId: account.userId }, include: { role: true },
       });
-      if (!user.isActive || user.role.code !== 'admin') throw new Error('An active administrator is required.');
+      if (!user.isActive || !isAdministrativeRole(user.role.code)) throw new Error('An active administrator is required.');
       const credentials = { encryptedSecret: encryptMfa(secret, user.userId), recoveryHashes: recoveryCodes.map(digest) };
       if (replace) {
         await tx.authMfa.upsert({
