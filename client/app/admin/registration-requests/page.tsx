@@ -1,18 +1,15 @@
 import { Suspense } from "react";
-import { RegistrationReview } from "./registration-review";
+import { redirect } from "next/navigation";
 
-export default function RegistrationRequests({ searchParams }: PageProps<"/admin/registration-requests">) {
-  return (
-    <Suspense fallback={<main className="p-6"><p role="status">Завантаження…</p></main>}>
-      <ReviewRoute searchParams={searchParams} />
-    </Suspense>
-  );
+export default function LegacyReviewPage({ searchParams }: PageProps<"/admin/registration-requests">) {
+  return <Suspense><LegacyReviewRedirect searchParams={searchParams} /></Suspense>;
 }
 
-async function ReviewRoute({ searchParams }: Pick<PageProps<"/admin/registration-requests">, "searchParams">) {
+async function LegacyReviewRedirect({ searchParams }: Pick<PageProps<"/admin/registration-requests">, "searchParams">) {
   const params = await searchParams;
-  const id = typeof params.id === "string" ? params.id : undefined;
-  const decision = params.decision === "approve" || params.decision === "reject" ? params.decision : undefined;
-
-  return <RegistrationReview key={id ?? "pending"} id={id} suggestedDecision={decision} />;
+  const query = new URLSearchParams();
+  for (const key of ["id", "decision"]) {
+    if (typeof params[key] === "string") query.set(key, params[key]);
+  }
+  return redirect("/superadmin/registration-requests" + (query.size ? "?" + query : ""));
 }

@@ -13,6 +13,12 @@
   font: 14px/1.4 var(--font-sans, Arial, sans-serif);
 }
 
+.embedded {
+  min-height: 0;
+  padding-inline: 0;
+  background: transparent;
+}
+
 .card {
   display: grid;
   gap: 16px;

@@ -72,14 +72,14 @@ export function RegistrationReview({ id, suggestedDecision }: { id?: string; sug
   const pharmacyRole = request?.requestedRole === "head" || request?.requestedRole === "logist";
 
   return (
-    <AuthCard title="Заявки на реєстрацію" description={id ? "Перевірте дані заявника перед ухваленням рішення." : "Заявки, які очікують рішення."}
-      footer={id ? <AuthLink href="/admin/registration-requests">Усі заявки</AuthLink> : <AuthLink href="/account">До облікового запису</AuthLink>}>
+    <AuthCard embedded title="Заявки на реєстрацію" description={id ? "Перевірте дані заявника перед ухваленням рішення." : "Заявки, які очікують рішення."}
+      footer={id ? <AuthLink href="/superadmin/registration-requests">Усі заявки</AuthLink> : undefined}>
       {!requests && !message && <p role="status">Завантаження…</p>}
       {requests?.length === 0 && <p>Немає заявок на розгляд.</p>}
       {!id && requests && <ul className="space-y-3">
         {requests.map(item => (
           <li key={item.id} className="break-words">
-            <AuthLink href={"/admin/registration-requests?id=" + item.id}>{item.firstName} {item.lastName} · {item.email}</AuthLink>
+            <AuthLink href={"/superadmin/registration-requests?id=" + item.id}>{item.firstName} {item.lastName} · {item.email}</AuthLink>
           </li>
         ))}
       </ul>}

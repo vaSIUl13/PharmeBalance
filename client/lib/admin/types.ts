@@ -9,7 +9,7 @@ export type AdminUser = {
   firstName: string;
   lastName: string;
   isActive: boolean;
-  role: { code: RoleCode };
+  role: { code: RoleCode | "superadmin" };
   pharmacyIds: number[];
 };
 

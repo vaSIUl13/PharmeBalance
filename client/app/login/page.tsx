@@ -34,13 +34,14 @@ export default function Login() {
         }
       }
       const next = new URLSearchParams(window.location.search).get("next");
-      if (next?.split("?")[0] === "/admin/registration-requests") {
+      if (next?.split("?")[0] === "/superadmin/registration-requests") {
         router.replace(next);
         return;
       }
       const user = await authRequest<{ role: string }>("me").catch(() => null);
       const homes: Record<string, string> = {
         admin: "/admin/users",
+        superadmin: "/superadmin/users",
         manager: "/manager/dashboard",
         head: "/head/dashboard",
         logist: "/logist/queue",

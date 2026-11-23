@@ -1,14 +1,15 @@
 import type { Tone } from "@/lib/head/format";
 import type { AdminUser, AuditEventType, RoleCode } from "./types";
 
-export const roleLabels: Record<RoleCode, string> = {
+export const roleLabels: Record<RoleCode | "superadmin", string> = {
+  superadmin: "Суперадміністратор",
   admin: "Адміністратор",
   manager: "Товарний менеджер",
   head: "Завідувач аптеки",
   logist: "Логіст",
 };
 
-export const roleCodes = Object.keys(roleLabels) as RoleCode[];
+export const roleCodes = ["admin", "manager", "head", "logist"] satisfies RoleCode[];
 
 export function needsPharmacy(role: RoleCode): boolean {
   return role === "head" || role === "logist";
