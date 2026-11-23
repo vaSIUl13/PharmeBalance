@@ -135,7 +135,7 @@ export function AccessDialog({ user, self, pharmacies, onClose, onDone }: {
   onDone: (message: string) => void;
 }) {
   const { busy, error, run } = useAction(onDone);
-  const [role, setRole] = useState<RoleCode>(user.role.code);
+  const [role, setRole] = useState<RoleCode>(user.role.code === "superadmin" ? "admin" : user.role.code);
   const [problem, setProblem] = useState("");
   const changed = role !== user.role.code;
 

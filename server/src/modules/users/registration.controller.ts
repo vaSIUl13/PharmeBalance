@@ -17,7 +17,7 @@ export class RegistrationController {
   }
 
   @registrationDocs.pending
-  @Permissions('USERS_MANAGE')
+  @Permissions('REGISTRATION_REVIEW')
   @Get()
   @Header('Cache-Control', 'no-store')
   pending(@Req() req: AuthRequest) {
@@ -25,7 +25,7 @@ export class RegistrationController {
   }
 
   @registrationDocs.detail
-  @Permissions('USERS_MANAGE')
+  @Permissions('REGISTRATION_REVIEW')
   @Get(':id')
   @Header('Cache-Control', 'no-store')
   detail(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string) {
@@ -34,7 +34,7 @@ export class RegistrationController {
 
   @registrationDocs.approve
   @registrationDocs.approval
-  @Permissions('USERS_MANAGE')
+  @Permissions('REGISTRATION_REVIEW')
   @Post(':id/approve')
   @HttpCode(204)
   approve(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string, @Body() body: unknown) {
@@ -42,7 +42,7 @@ export class RegistrationController {
   }
 
   @registrationDocs.reject
-  @Permissions('USERS_MANAGE')
+  @Permissions('REGISTRATION_REVIEW')
   @Post(':id/reject')
   @HttpCode(204)
   reject(@Req() req: AuthRequest, @Param('id', ParseUUIDPipe) id: string) {

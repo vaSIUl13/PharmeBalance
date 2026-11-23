@@ -98,7 +98,7 @@ export function Users() {
                             <Badge tone={user.isActive ? "success" : "danger"}>{user.isActive ? "Активний" : "Заблокований"}</Badge>
                           </td>
                           <td className="px-4 py-3">
-                            {user.isActive && (
+                            {user.isActive && user.role.code !== "superadmin" && (
                               <div className="flex flex-wrap justify-end gap-2">
                                 <button type="button" className={buttonClasses.secondary} onClick={() => setDialog({ kind: "access", user })}>Доступ</button>
                                 {user.userId !== selfId && (

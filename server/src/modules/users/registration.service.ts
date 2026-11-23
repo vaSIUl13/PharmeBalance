@@ -19,7 +19,7 @@ function reviewerEmail() {
 }
 
 function requireReviewer(actor: Principal) {
-  if (actor.role !== 'admin' || actor.email !== reviewerEmail() || !actor.permissions.includes('USERS_MANAGE')) {
+  if (actor.role !== 'superadmin' || !actor.permissions.includes('REGISTRATION_REVIEW')) {
     throw new ForbiddenException();
   }
 }
@@ -37,7 +37,6 @@ export class RegistrationService {
 
   async submit(body: unknown, ip: string) {
     const reviewer = reviewerEmail();
-    if (!reviewer) throw new ServiceUnavailableException('Registration is unavailable');
     await this.redis.limit('registration:ip', ip, 8, 3600);
     if (!body || typeof body !== 'object' || !('consent' in body) || body.consent !== true) {
       throw new BadRequestException('Consent is required');
@@ -53,8 +52,8 @@ export class RegistrationService {
     profile.login = profile.login.toLowerCase();
     await this.redis.limit('registration:email', profile.email, 3, 3600);
     const availableReviewer = await this.db.userAccount.findFirst({
-      where: { email: reviewer, isActive: true, authMfa: { isNot: null },
-        role: { code: 'admin', rolePermissionRows: { some: { permission: { code: 'USERS_MANAGE' } } } } },
+      where: { isActive: true, authMfa: { isNot: null },
+        role: { code: 'superadmin', rolePermissionRows: { some: { permission: { code: 'REGISTRATION_REVIEW' } } } } },
       select: { userId: true },
     });
     if (!availableReviewer) throw new ServiceUnavailableException('Registration is unavailable');
@@ -67,7 +66,7 @@ export class RegistrationService {
       const { id } = await this.db.registrationRequest.create({
         data: { ...profile, requestedRole: role, passwordHash }, select: { id: true },
       });
-      if (this.email.enabled) void this.notify(reviewer, id).catch(() => this.logger.warn('Registration notification failed'));
+      if (reviewer && this.email.enabled) void this.notify(reviewer, id).catch(() => this.logger.warn('Registration notification failed'));
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')) throw error;
     }
@@ -75,7 +74,7 @@ export class RegistrationService {
 
   private async notify(to: string, id: string) {
     const origin = process.env.AUTH_ORIGIN ?? 'http://localhost:3000';
-    const url = new URL('/admin/registration-requests', origin);
+    const url = new URL('/superadmin/registration-requests', origin);
     url.searchParams.set('id', id);
     const approve = new URL(url);
     const reject = new URL(url);
@@ -108,8 +107,8 @@ export class RegistrationService {
       await this.db.$transaction(async tx => {
         await lockUser(tx, actor.userId);
         const reviewer = await tx.userAccount.findFirst({
-          where: { userId: actor.userId, email: reviewerEmail(), isActive: true,
-            role: { code: 'admin', rolePermissionRows: { some: { permission: { code: 'USERS_MANAGE' } } } } },
+          where: { userId: actor.userId, isActive: true,
+            role: { code: 'superadmin', rolePermissionRows: { some: { permission: { code: 'REGISTRATION_REVIEW' } } } } },
           select: { userId: true },
         });
         if (!reviewer) throw new ForbiddenException();

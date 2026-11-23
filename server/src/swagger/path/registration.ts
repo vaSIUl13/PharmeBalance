@@ -1,6 +1,9 @@
 import { applyDecorators } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiForbiddenResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { registrationPasswordMinLength } from '../../modules/users/dto/user-input';
+
+const review = (summary: string) => applyDecorators(ApiOperation({ summary }),
+  ApiForbiddenResponse({ description: 'Requires the superadmin role and REGISTRATION_REVIEW permission' }));
 
 export const registrationDocs = {
   controller: ApiTags('registration'),
@@ -16,10 +19,10 @@ export const registrationDocs = {
       consent: { type: 'boolean' },
     },
   } })),
-  pending: ApiOperation({ summary: 'List pending registration requests as the configured reviewer' }),
-  detail: ApiOperation({ summary: 'Review a registration request' }),
-  approve: ApiOperation({ summary: 'Approve a request and provision its account' }),
-  reject: ApiOperation({ summary: 'Reject a request without provisioning an account' }),
+  pending: review('List pending registration requests'),
+  detail: review('Review a registration request'),
+  approve: review('Approve a request and provision its account'),
+  reject: review('Reject a request without provisioning an account'),
   approval: ApiBody({ required: false, schema: { type: 'object', properties: {
     pharmacyId: { type: 'integer', minimum: 1, description: 'Required for HEAD, optional for LOGISTICIAN' },
   } } }),

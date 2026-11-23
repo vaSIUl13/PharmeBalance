@@ -10,7 +10,7 @@ import { useResource } from "@/lib/head/use-resource";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { ErrorState, LoadingState } from "@/components/head/ui";
 
-const navigation: { href: string; label: string; short: string; icon: IconName }[] = [
+const adminNavigation: { href: string; label: string; short: string; icon: IconName }[] = [
   { href: "/admin/users", label: "Користувачі", short: "Люди", icon: "users" },
   { href: "/admin/pharmacies", label: "Аптеки", short: "Аптеки", icon: "pin" },
   { href: "/admin/audit", label: "Журнал аудиту", short: "Аудит", icon: "file" },
@@ -25,8 +25,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   const unauthorized = error instanceof ApiError && error.status === 401;
   useEffect(() => {
-    if (unauthorized) router.replace("/login");
-  }, [unauthorized, router]);
+    if (unauthorized) {
+      const next = pathname === "/superadmin/registration-requests"
+        ? "?next=" + encodeURIComponent(pathname + window.location.search) : "";
+      router.replace("/login" + next);
+    }
+  }, [unauthorized, pathname, router]);
 
   async function signOut() {
     if (signingOut) return;
@@ -56,7 +60,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (principal.role !== "admin") {
+  const isSuperadmin = principal.role === "superadmin";
+  const ownerConsole = pathname.startsWith("/superadmin");
+  if (ownerConsole ? !isSuperadmin : principal.role !== "admin" && !isSuperadmin) {
     return (
       <main className="grid min-h-svh place-items-center bg-[#f8faf9] p-6 text-[#0f172a]">
         <div className="w-full max-w-md space-y-3 rounded-xl border border-[#e2e8e5] bg-white p-6">
@@ -66,6 +72,13 @@ export function AdminShell({ children }: { children: ReactNode }) {
         </div>
       </main>
     );
+  }
+
+  const navigation = adminNavigation.map(item => ({
+    ...item, href: ownerConsole ? item.href.replace("/admin/", "/superadmin/") : item.href,
+  }));
+  if (ownerConsole && principal.permissions.includes("REGISTRATION_REVIEW")) {
+    navigation.push({ href: "/superadmin/registration-requests", label: "Запити на реєстрацію", short: "Запити", icon: "check" });
   }
 
   const active = (href: string) => pathname.startsWith(href);
@@ -78,7 +91,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <Image src="/assets/icons/logo.svg" alt="" width={36} height={36} />
           <div className="min-w-0">
             <p className="font-semibold">PharmaBalance</p>
-            <p className="truncate text-xs text-[#64748b]">Адміністратор</p>
+            <p className="truncate text-xs text-[#64748b]">{isSuperadmin ? "Суперадміністратор" : "Адміністратор"}</p>
           </div>
         </div>
         <nav aria-label="Основна навігація" className="flex-1 space-y-1 px-3">

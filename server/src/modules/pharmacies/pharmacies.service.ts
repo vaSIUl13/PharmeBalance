@@ -1,3 +1,4 @@
+import { isAdministrativeRole } from '../auth/administrative-role';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { pharmacyScope } from '../auth/auth-scope';
 import type { Principal } from '../auth/auth.service';
@@ -9,7 +10,7 @@ export class PharmaciesService {
   constructor(private readonly db: PrismaService) {}
 
   private visibleTo(user: Principal): Prisma.PharmacyWhereInput {
-    if (user.role === 'admin' && user.permissions.includes('REFERENCE_EDIT')) return {};
+    if (isAdministrativeRole(user.role) && user.permissions.includes('REFERENCE_EDIT')) return {};
     return pharmacyScope(user);
   }
 

@@ -3,14 +3,16 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import styles from "./auth.module.css";
 
-export function AuthCard({ title, description, children, footer }: {
+export function AuthCard({ title, description, children, footer, embedded = false }: {
   title: string;
   description: string;
   children: ReactNode;
-  footer: ReactNode;
+  footer?: ReactNode;
+  embedded?: boolean;
 }) {
+  const Container = embedded ? "div" : "main";
   return (
-    <main className={styles.page}>
+    <Container className={embedded ? `${styles.page} ${styles.embedded}` : styles.page}>
       <section aria-labelledby="auth-title" className={styles.card}>
         <div className={styles.brand}>
           <Image className={styles.mark} src="/assets/icons/logo.svg" alt="" width={40} height={40} />
@@ -24,9 +26,9 @@ export function AuthCard({ title, description, children, footer }: {
           <p className={styles.description}>{description}</p>
         </header>
         {children}
-        <div className={styles.footer}>{footer}</div>
+        {footer && <div className={styles.footer}>{footer}</div>}
       </section>
-    </main>
+    </Container>
   );
 }
 

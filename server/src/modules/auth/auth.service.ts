@@ -1,3 +1,4 @@
+import { isAdministrativeRole } from './administrative-role';
 import { ForbiddenException, Injectable, Logger, OnModuleDestroy, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { authenticator } from 'otplib';
@@ -53,7 +54,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       include: { user: { include: accessRelations } },
     });
     if (!session || session.revokedAt || !session.user.isActive) throw new UnauthorizedException();
-    const isAdmin = session.user.role.code === 'admin';
+    const isAdmin = isAdministrativeRole(session.user.role.code);
     const now = Date.now();
     if (session.expiresAt.getTime() <= now ||
         now - session.lastSeenAt.getTime() >= (isAdmin ? adminIdle : idle) ||
@@ -125,7 +126,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       });
       if (!live?.isActive || live.passwordHash !== account.passwordHash) throw new UnauthorizedException();
       if (replacement) await tx.userAccount.update({ where: { userId: account.userId }, data: { passwordHash: replacement } });
-      if (live.role.code !== 'admin') return { session: await this.issue(tx, live.userId, false, device, previous) } as const;
+      if (!isAdministrativeRole(live.role.code)) return { session: await this.issue(tx, live.userId, false, device, previous) } as const;
       if (!live.authMfa) throw new ForbiddenException('Administrator MFA enrollment required');
       const challenge = token();
       await tx.authChallenge.deleteMany({ where: { userId: live.userId, purpose: 'MFA' } });
@@ -150,7 +151,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         where: { tokenHash: hash }, include: { user: { include: { authMfa: true, role: true } } },
       });
       const credentials = live?.user.authMfa;
-      if (!live || live.purpose !== 'MFA' || !credentials || !live.user.isActive || live.user.role.code !== 'admin' ||
+      if (!live || live.purpose !== 'MFA' || !credentials || !live.user.isActive || !isAdministrativeRole(live.user.role.code) ||
           live.expiresAt.getTime() <= Date.now()) return null;
 
       if (code.length === 22) {
@@ -187,8 +188,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return this.db.authSession.findMany({
       where: {
         userId: principal.userId, revokedAt: null, expiresAt: { gt: now },
-        lastSeenAt: { gt: new Date(now.getTime() - (principal.role === 'admin' ? adminIdle : idle)) },
-        ...(principal.role === 'admin' ? {
+        lastSeenAt: { gt: new Date(now.getTime() - (isAdministrativeRole(principal.role) ? adminIdle : idle)) },
+        ...(isAdministrativeRole(principal.role) ? {
           mfaVerified: true, createdAt: { gt: new Date(now.getTime() - adminLifetime) },
         } : {}),
       },
@@ -220,6 +221,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const hashes = await this.db.$transaction(async (tx) => {
       await lockUser(tx, userId);
       const user = await tx.userAccount.findUnique({ where: { userId }, select: { isActive: true, role: { select: { code: true } } } });
+      if (user?.role.code === 'superadmin') throw new ForbiddenException('Cannot block a superadministrator');
       if (!user?.isActive) return [];
       await endAssignments(tx, actor.userId, userId, user.role.code);
       await tx.userAccount.update({ where: { userId }, data: { isActive: false } });
