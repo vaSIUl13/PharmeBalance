@@ -28,6 +28,14 @@ export class ReportsController {
     return this.reports.summary(req.principal!, from, to, pharmacyId);
   }
 
+  @reportsDocs.timeline
+  @Get('timeline')
+  @Header('Cache-Control', 'no-store')
+  timeline(@Req() req: AuthRequest, @Query() query: Record<string, unknown>) {
+    const { from, to, pharmacyId } = period(query);
+    return this.reports.timeline(req.principal!, from, to, pharmacyId);
+  }
+
   @reportsDocs.export
   @Get('export')
   @Header('Cache-Control', 'no-store')

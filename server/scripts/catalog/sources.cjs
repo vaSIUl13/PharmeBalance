@@ -1,12 +1,14 @@
-const { readFile, stat } = require('node:fs/promises');
+const { readFile, stat, writeFile } = require('node:fs/promises');
 const {
   DRLZ, hash, parseDrlz, parseOverpass, parsePharmacyCsv, drlzUrl, createHttpClient,
 } = require('./adapters.cjs');
 
 const { canonical } = require('./record-values.cjs');
 
+const snapshotLimit = 64 * 1024 * 1024;
+
 async function readBounded(file) {
-  if ((await stat(file)).size > 64 * 1024 * 1024) throw new Error('Input file exceeds 64 MiB; split it into smaller snapshots');
+  if ((await stat(file)).size > snapshotLimit) throw new Error('Input file exceeds 64 MiB; split it into smaller snapshots');
   return readFile(file, 'utf8');
 }
 
@@ -126,14 +128,26 @@ async function makeSource(name, options, requestFactory = createHttpClient) {
   const request = requestFactory({ interval: 2500, timeout: options.ukraine ? 90_000 : 25_000,
     userAgent: process.env.CATALOG_USER_AGENT ?? 'PharmeBalance-catalog/1.0' });
   let records;
+  let snapshot;
   return {
     source: 'OSM', scope: url.href + '|' + (bounds ?? 'UA'), isDrlz: false,
     start: () => ({ offset: 0 }),
     async page() {
-      records ??= parseOverpass((await request(url.href, {
-        method: 'POST', body: new URLSearchParams({ data: query }),
-      })).body).sort((a, b) => a.externalId.localeCompare(b.externalId));
+      if (!records) {
+        const { body } = await request(url.href, { method: 'POST', body: new URLSearchParams({ data: query }) });
+        const parsed = parseOverpass(body).sort((a, b) => a.externalId.localeCompare(b.externalId));
+        if (options['save-snapshot']) {
+          if (!parsed.length) throw new Error('Overpass returned no pharmacies; no snapshot was saved');
+          snapshot = JSON.stringify(body);
+          if (Buffer.byteLength(snapshot) > snapshotLimit) throw new Error('Snapshot exceeds 64 MiB; use smaller areas');
+        }
+        records = parsed;
+      }
       return { records, removed: [], next: null, done: true, etag: hash(JSON.stringify(canonical(records))) };
+    },
+    async saveSnapshot() {
+      if (!snapshot) throw new Error('No validated OSM snapshot available');
+      await writeFile(options['save-snapshot'], snapshot, { encoding: 'utf8', flag: 'wx' });
     },
     materialize: async (row) => row,
   };

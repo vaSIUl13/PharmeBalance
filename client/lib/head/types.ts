@@ -96,3 +96,10 @@ export type ImportBatch = {
 export type ImportRowError = { row: number; message: string };
 
 export type ImportDetail = ImportBatch & { errors: ImportRowError[] };
+
+export type DailySales = {
+  from: string;
+  to: string;
+  hasSales: boolean;
+  points: { day: string; quantity: number }[];
+};

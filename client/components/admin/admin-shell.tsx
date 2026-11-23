@@ -13,6 +13,8 @@ import { ErrorState, LoadingState } from "@/components/head/ui";
 const adminNavigation: { href: string; label: string; short: string; icon: IconName }[] = [
   { href: "/admin/users", label: "Користувачі", short: "Люди", icon: "users" },
   { href: "/admin/pharmacies", label: "Аптеки", short: "Аптеки", icon: "pin" },
+  { href: "/admin/drugs", label: "Довідник препаратів", short: "Ліки", icon: "box" },
+  { href: "/admin/rights", label: "Права доступу", short: "Права", icon: "sliders" },
   { href: "/admin/audit", label: "Журнал аудиту", short: "Аудит", icon: "file" },
 ];
 
@@ -126,7 +128,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
         <main className="mx-auto w-full max-w-[1200px] space-y-4 p-4 md:p-6">{signOutError && <p role="alert">Не вдалося вийти. Спробуйте ще раз.</p>}{children}</main>
       </div>
 
-      <nav aria-label="Основна навігація" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-[#e2e8e5] bg-white md:hidden">
+      <nav aria-label="Основна навігація" style={{ gridTemplateColumns: "repeat(" + navigation.length + ", minmax(0, 1fr))" }}
+        className="fixed inset-x-0 bottom-0 z-10 grid border-t border-[#e2e8e5] bg-white md:hidden">
         {navigation.map(item => (
           <Link key={item.href} href={item.href} aria-current={active(item.href) ? "page" : undefined}
             className={"flex min-h-14 flex-col items-center justify-center gap-1 text-[11px] " +

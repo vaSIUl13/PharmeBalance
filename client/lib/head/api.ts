@@ -1,6 +1,6 @@
 import { apiRequest, apiUpload, authRequest } from "@/lib/auth";
 import type {
-  CurrentPosition, CursorPage, ImportBatch, ImportDetail, ImportKind, Pharmacy, Principal,
+  CurrentPosition, CursorPage, DailySales, ImportBatch, ImportDetail, ImportKind, Pharmacy, Principal,
   Transfer, TransferDetail, TransferResult,
 } from "./types";
 
@@ -50,4 +50,10 @@ export function loadImport(id: number): Promise<ImportDetail> {
 
 export function uploadImport(kind: ImportKind, form: FormData): Promise<ImportDetail> {
   return apiUpload<ImportDetail>("imports/" + kind, form, [422]);
+}
+
+export function loadDailySales(days: number, stockId?: number): Promise<DailySales> {
+  const query = new URLSearchParams({ days: String(days) });
+  if (stockId !== undefined) query.set("stockId", String(stockId));
+  return apiRequest<DailySales>("stocks/sales/daily?" + query.toString());
 }

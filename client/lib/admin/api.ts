@@ -1,6 +1,6 @@
 import { apiRequest, authRequest } from "@/lib/auth";
 import type { Principal } from "@/lib/head/types";
-import type { AdminPharmacy, AdminUser, AuditPage, CreatePharmacyInput, CreateUserInput, ExternalPharmacy, RoleCode } from "./types";
+import type { AdminPharmacy, AdminUser, AuditPage, CreatePharmacyInput, CreateUserInput, DrugPage, ExternalMapPage, ExternalPharmacy, RoleCode, RoleInfo } from "./types";
 
 const pageLimit = 40;
 
@@ -38,6 +38,26 @@ export function searchExternalPharmacies(query: string, after?: number): Promise
   const params = new URLSearchParams({ q: query, complete: "true" });
   if (after !== undefined) params.set("after", String(after));
   return apiRequest("pharmacies/external?" + params);
+}
+
+export function loadExternalInBox(box: { south: number; west: number; north: number; east: number }, limit = 500): Promise<ExternalMapPage> {
+  const params = new URLSearchParams({
+    south: box.south.toFixed(6), west: box.west.toFixed(6), north: box.north.toFixed(6), east: box.east.toFixed(6),
+    limit: String(limit),
+  });
+  return apiRequest<ExternalMapPage>("pharmacies/external/map?" + params.toString());
+}
+
+export function loadRoles(): Promise<RoleInfo[]> {
+  return apiRequest<RoleInfo[]>("roles");
+}
+
+export function loadDrugs(query = "", after?: number): Promise<DrugPage> {
+  const params = new URLSearchParams();
+  if (query) params.set("q", query);
+  if (after !== undefined) params.set("after", String(after));
+  const suffix = params.toString();
+  return apiRequest<DrugPage>("drugs" + (suffix ? "?" + suffix : ""));
 }
 
 export function loadAudit(before?: number): Promise<AuditPage> {

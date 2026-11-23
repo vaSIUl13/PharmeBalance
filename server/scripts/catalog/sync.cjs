@@ -152,7 +152,7 @@ async function main() {
     mode: { type: 'string' }, since: { type: 'string' }, file: { type: 'string' }, mapping: { type: 'string' },
     delimiter: { type: 'string' }, bbox: { type: 'string' }, 'overpass-url': { type: 'string' },
     limit: { type: 'string' }, 'dry-run': { type: 'boolean' }, apply: { type: 'boolean' }, resume: { type: 'boolean' },
-    ukraine: { type: 'boolean' }, watch: { type: 'boolean' },
+    ukraine: { type: 'boolean' }, watch: { type: 'boolean' }, 'save-snapshot': { type: 'string' },
   } });
   if (positionals.length !== 1 || (values.apply && values['dry-run']) || (values.resume && !values.apply)) {
     throw new Error('Choose one source and one mode; --resume requires --apply');
@@ -163,12 +163,17 @@ async function main() {
   if (values.watch && (positionals[0] !== 'osm' || !values.ukraine || !values.apply || values.resume || values.limit)) {
     throw new Error('--watch requires osm --ukraine --apply without --resume or --limit');
   }
+  if (values['save-snapshot'] !== undefined && (positionals[0] !== 'osm' || !values['dry-run'] ||
+      values.file || !values['save-snapshot'].trim())) {
+    throw new Error('--save-snapshot requires an online OSM --dry-run and a new output file');
+  }
   const db = new PrismaClient();
   try {
     do {
       try {
         const adapter = await makeSource(positionals[0], values);
         const result = await synchronize(db, adapter, { ...values, limit });
+        if (values['save-snapshot']) await adapter.saveSnapshot();
         console.log(JSON.stringify(result, null, 2));
       } catch (error) {
         if (!values.watch) throw error;

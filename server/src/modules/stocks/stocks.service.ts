@@ -49,6 +49,27 @@ export class StocksService {
     return { asOf: run?.asOf ?? null, items, next: rows.length > pageSize ? items.at(-1)!.stockId : null };
   }
 
+  async dailySales(user: Principal, days: number, stockId?: number) {
+    if (user.role !== 'head') throw new ForbiddenException();
+    const synthetic = new URL(process.env.DATABASE_URL!).pathname.endsWith('_demo');
+    const where: Prisma.SaleWhereInput = { stockId, stock: { pharmacy: { AND: [this.scope(user), { isSynthetic: synthetic }] } } };
+    const latest = await this.db.sale.findFirst({ where, orderBy: { saleDate: 'desc' }, select: { saleDate: true } });
+    const to = (latest?.saleDate ?? new Date()).toISOString().slice(0, 10);
+    const first = new Date(Date.parse(to + 'T00:00:00Z') - (days - 1) * 86_400_000);
+    const from = first.toISOString().slice(0, 10);
+    const rows = await this.db.sale.groupBy({
+      by: ['saleDate'], _sum: { quantity: true, returnedQuantity: true },
+      where: { ...where, saleDate: { gte: first, lte: new Date(to + 'T00:00:00Z') } },
+    });
+    const totals = new Map(rows.map(row => [row.saleDate.toISOString().slice(0, 10),
+      (row._sum.quantity ?? 0) - (row._sum.returnedQuantity ?? 0)] as const));
+    const points = Array.from({ length: days }, (_, index) => {
+      const day = new Date(first.getTime() + index * 86_400_000).toISOString().slice(0, 10);
+      return { day, quantity: totals.get(day) ?? 0 };
+    });
+    return { from, to, hasSales: latest !== null, points };
+  }
+
   async create(user: Principal, input: CreateStockDto) {
     const { sku, pharmacyId, ...levels } = input;
     try {

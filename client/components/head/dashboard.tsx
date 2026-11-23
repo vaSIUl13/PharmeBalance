@@ -2,16 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { loadImports, loadPositions, loadTransfers } from "@/lib/head/api";
+import { loadDailySales, loadImports, loadPositions, loadTransfers } from "@/lib/head/api";
 import { formatDateTime, formatNumber, importStatuses, toNumber } from "@/lib/head/format";
 import type { CurrentPosition, TransferDetail } from "@/lib/head/types";
 import { useResource } from "@/lib/head/use-resource";
 import { useHeadSession } from "./head-session";
+import { BarChart } from "@/components/manager/charts";
 import { Icon } from "@/components/ui/icon";
 import { ReceiveDialog } from "./receive-dialog";
 import { Badge, buttonClasses, Card, EmptyState, Kpi, Notice, PageHeader, ProgressBar, ResourceGate } from "./ui";
 
 const loadLatestImports = () => loadImports();
+const loadMonthSales = () => loadDailySales(30);
 const stockoutHorizonDays = 14;
 const urgentDays = 3;
 const nearestLimit = 6;
@@ -69,6 +71,7 @@ export function HeadDashboard() {
   const positions = useResource(loadPositions);
   const transfers = useResource(loadTransfers);
   const imports = useResource(loadLatestImports);
+  const sales = useResource(loadMonthSales);
   const [receiving, setReceiving] = useState<TransferDetail | null>(null);
   const [message, setMessage] = useState("");
 
@@ -145,6 +148,24 @@ export function HeadDashboard() {
           </ResourceGate>
         </Card>
       </div>
+
+      <Card title="Продажі за 30 днів" note="Продано мінус повернення, шт. на день">
+        <ResourceGate resource={sales} errorText="Не вдалося завантажити продажі.">
+          {data => data.hasSales
+            ? (
+              <div className="space-y-2 p-4">
+                <BarChart label="Продажі аптеки за 30 днів" height={200}
+                  labels={data.points.map(point => point.day.slice(8, 10) + "." + point.day.slice(5, 7))}
+                  series={{ name: "Продано", color: "#0f766e", values: data.points.map(point => point.quantity) }} />
+                <p className="text-xs text-[#64748b]">
+                  Усього: <b className="tabular-nums text-[#0f172a]">{formatNumber(data.points.reduce((sum, point) => sum + point.quantity, 0))}</b> шт.
+                  {" · "}дані до {data.to.slice(8, 10) + "." + data.to.slice(5, 7)}
+                </p>
+              </div>
+            )
+            : <EmptyState title="Продажів ще немає" hint="Завантажте продажі у розділі «Імпорт даних»" />}
+        </ResourceGate>
+      </Card>
 
       <Card title="Найближчі до вичерпання" note="Днів до вичерпання за прогнозом"
         action={<Link href="/head/stock" className="text-sm text-[#0f766e] underline">Усі позиції</Link>}>

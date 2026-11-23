@@ -16,6 +16,14 @@ export type ReportSummary = {
   totals: ReportTotals;
 };
 
+export type TimelinePoint = ReportTotals & { day: string };
+
+export type ReportTimeline = {
+  period: { from: string; to: string; timeZone: string };
+  pharmacyId: number | null;
+  points: TimelinePoint[];
+};
+
 export type DecisionCommand = "CONFIRM" | "REJECT" | "CANCEL";
 
 export type AuditEventType =

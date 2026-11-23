@@ -11,6 +11,14 @@ export const pharmaciesDocs = {
     ApiOperation({ summary: 'Search external pharmacy records' }),
     ApiQuery({ name: 'complete', required: false, enum: ['true'], description: 'Require name, city, address and coordinates' }),
   ),
+  externalMap: applyDecorators(
+    ApiOperation({ summary: 'List external pharmacy records inside a map bounding box' }),
+    ApiQuery({ name: 'south', type: Number, description: 'Latitude -90..90' }),
+    ApiQuery({ name: 'west', type: Number, description: 'Longitude -180..180' }),
+    ApiQuery({ name: 'north', type: Number }),
+    ApiQuery({ name: 'east', type: Number }),
+    ApiQuery({ name: 'limit', required: false, type: Number, description: '1..1000, default 500; truncated=true when more records exist' }),
+  ),
   detail: ApiOperation({ summary: 'View a managed pharmacy within the current user scope' }),
   create: applyDecorators(
     ApiOperation({ summary: 'Create a managed pharmacy' }),
