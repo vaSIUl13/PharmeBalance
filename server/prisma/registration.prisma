@@ -1,0 +1,15 @@
+model RegistrationRequest {
+  id String @id @default(uuid()) @db.Uuid
+  firstName String @db.VarChar(60) @map("first_name")
+  lastName String @db.VarChar(60) @map("last_name")
+  login String @db.VarChar(50)
+  email String @db.VarChar(100)
+  requestedRole String @db.VarChar(20) @map("requested_role")
+  passwordHash String? @db.VarChar(255) @map("password_hash")
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  decidedAt DateTime? @db.Timestamptz(3) @map("decided_at")
+  approved Boolean?
+
+  @@index([decidedAt, createdAt])
+  @@map("registration_request")
+}

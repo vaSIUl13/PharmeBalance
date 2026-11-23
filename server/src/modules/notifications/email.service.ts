@@ -39,5 +39,10 @@ export class EmailService implements OnModuleDestroy {
       messageId: '<transfer-' + id + '@' + this.from.replace(/^.*@/, '').replace(/>$/, '') + '>', ...message });
   }
 
+  async sendRegistrationNotice(to: string, message: { subject: string; text: string; html: string }) {
+    if (!this.transport || !this.from) throw new Error('Email is disabled');
+    await this.transport.sendMail({ from: this.from, to: { name: '', address: to }, ...message });
+  }
+
   onModuleDestroy() { this.transport?.close(); }
 }

@@ -1,65 +1,72 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import Link from "next/link";
+import { useState, useSyncExternalStore, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { authRequest } from "../../lib/auth";
+import { AuthCard, AuthLink } from "@/components/auth/auth-card";
+import { AuthFeedback, AuthField, AuthSubmit } from "@/components/auth/auth-fields";
+import styles from "@/components/auth/auth.module.css";
+import { authRequest } from "@/lib/auth";
+
+function subscribeToFragment(change: () => void) {
+  window.addEventListener("hashchange", change);
+  return () => window.removeEventListener("hashchange", change);
+}
+
+function readToken() {
+  return new URLSearchParams(window.location.hash.slice(1)).get("token") ?? "";
+}
 
 export default function ResetPassword() {
   const router = useRouter();
-  const [mode, setMode] = useState<"detect" | "request" | "reset">("detect");
-  const [token, setToken] = useState("");
+  const token = useSyncExternalStore(subscribeToFragment, readToken, () => "");
   const [message, setMessage] = useState("");
+  const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
-
-  function start() {
-    const value = new URLSearchParams(window.location.hash.slice(1)).get("token");
-    if (value) {
-      setToken(value);
-      window.history.replaceState(null, "", window.location.pathname);
-    }
-    setMode(value ? "reset" : "request");
-  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
     const fields = new FormData(event.currentTarget);
     setBusy(true);
     setMessage("");
+    setError(false);
     try {
-      if (mode === "reset") {
-        await authRequest("password/reset", "POST", { token, newPassword: fields.get("password") });
+      if (token) {
+        const password = fields.get("password");
+        if (password !== fields.get("confirmPassword")) throw new Error("Паролі не збігаються.");
+        await authRequest("password/reset", "POST", { token, newPassword: password });
+        window.history.replaceState(null, "", window.location.pathname);
         router.replace("/login");
       } else {
         await authRequest("password/reset-request", "POST", { email: fields.get("email") });
         setMessage("Якщо акаунт існує, ми надішлемо інструкцію на цю адресу.");
       }
-    } catch (error) {
-      setMessage((error as Error).message);
+    } catch (failure) {
+      setError(true);
+      setMessage(failure instanceof Error ? failure.message : "Не вдалося відновити пароль.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <main className="mx-auto max-w-sm space-y-5 p-8">
-      <h1 className="text-2xl font-semibold">Відновлення пароля</h1>
-      {mode === "detect" ? <button className="underline" onClick={start}>Продовжити</button> : (
-        <form className="space-y-4" onSubmit={submit}>
-          {mode === "reset" ? (
-            <label className="block">Новий пароль
-              <input className="block w-full rounded border p-2" name="password" type="password" autoComplete="new-password" minLength={12} maxLength={256} required />
-            </label>
-          ) : (
-            <label className="block">Електронна пошта
-              <input className="block w-full rounded border p-2" name="email" type="email" autoComplete="email" maxLength={100} required />
-            </label>
-          )}
-          <button className="rounded bg-slate-900 px-4 py-2 text-white disabled:opacity-50" disabled={busy}>{mode === "reset" ? "Змінити пароль" : "Надіслати посилання"}</button>
-        </form>
-      )}
-      {message && <p role="status">{message}</p>}
-      <Link className="underline" href="/login">Повернутися до входу</Link>
-    </main>
+    <AuthCard title={token ? "Новий пароль" : "Відновлення пароля"}
+      description={token ? "Введіть і підтвердьте новий пароль." : "Вкажіть email облікового запису — ми надішлемо посилання для скидання пароля"}
+      footer={<AuthLink href="/login">→ Повернутися до входу</AuthLink>}
+    >
+      <form className={styles.form} onSubmit={submit} method="post" key={String(Boolean(token))}>
+        {token ? (
+          <>
+            <AuthField label="Новий пароль" name="password" type="password" minLength={12} maxLength={256}
+              hint="Щонайменше 12 символів" autoComplete="new-password" required />
+            <AuthField label="Повторіть пароль" name="confirmPassword" type="password" autoComplete="new-password" maxLength={256} required />
+          </>
+        ) : (
+          <AuthField label="Email" name="email" type="email" placeholder="name@company.ua" autoComplete="email" maxLength={100} required />
+        )}
+        <AuthFeedback message={message} error={error} />
+        <AuthSubmit busy={busy}>{token ? "Змінити пароль" : "Надіслати посилання"}</AuthSubmit>
+      </form>
+    </AuthCard>
   );
 }

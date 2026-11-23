@@ -43,14 +43,16 @@ export function parseAccess(input: unknown): UserAccessDto {
   return { role: code, pharmacyId };
 }
 
-export function parseCreate(input: unknown): CreateUserDto {
+export const registrationPasswordMinLength = 8;
+
+export function parseCreate(input: unknown, minimumPasswordLength = 12): CreateUserDto {
   const body = record(input);
   const { role, pharmacyId } = parseAccess(body);
   if (!role) throw new BadRequestException('Role is required');
   const email = stringField(body, 'email', 100).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('Invalid email');
   const password = body.password;
-  if (typeof password !== 'string' || password.length < 12 || password.length > 256) throw new BadRequestException('Invalid password');
+  if (typeof password !== 'string' || password.length < minimumPasswordLength || password.length > 256) throw new BadRequestException('Invalid password');
   return { email, password, role, pharmacyId, login: stringField(body, 'login', 50),
     firstName: stringField(body, 'firstName', 60), lastName: stringField(body, 'lastName', 60) };
 }
