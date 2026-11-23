@@ -7,7 +7,7 @@ import { formatDateTime, formatNumber, importStatuses, toNumber } from "@/lib/he
 import type { ForecastItem, TransferDetail } from "@/lib/head/types";
 import { useResource } from "@/lib/head/use-resource";
 import { useHeadSession } from "./head-session";
-import { Icon } from "./icon";
+import { Icon } from "@/components/ui/icon";
 import { ReceiveDialog } from "./receive-dialog";
 import { Badge, buttonClasses, Card, EmptyState, Kpi, Notice, PageHeader, ProgressBar, ResourceGate } from "./ui";
 

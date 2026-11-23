@@ -5,7 +5,7 @@ import { ApiError } from "@/lib/auth";
 import { receiveTransfer } from "@/lib/head/api";
 import { formatDrug } from "@/lib/head/format";
 import type { TransferDetail } from "@/lib/head/types";
-import { Icon } from "./icon";
+import { Icon } from "@/components/ui/icon";
 import { buttonClasses, inputClasses, Notice } from "./ui";
 
 const conflictMessage = "Статус переміщення або залишок донора змінилися. Дані оновлено, перевірте картку.";

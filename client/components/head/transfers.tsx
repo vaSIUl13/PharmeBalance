@@ -5,7 +5,7 @@ import { loadTransfers } from "@/lib/head/api";
 import { formatDateTime, formatDrug, formatNumber, toNumber, transferStatuses } from "@/lib/head/format";
 import type { TransferDetail, TransferStatus } from "@/lib/head/types";
 import { useResource } from "@/lib/head/use-resource";
-import { Icon } from "./icon";
+import { Icon } from "@/components/ui/icon";
 import { useHeadSession } from "./head-session";
 import { ReceiveDialog } from "./receive-dialog";
 import { Badge, buttonClasses, Card, EmptyState, inputClasses, Notice, PageHeader, ResourceGate } from "./ui";

@@ -7,7 +7,7 @@ import type { TransferDetail, TransferStatus } from "@/lib/head/types";
 import { useResource } from "@/lib/head/use-resource";
 import { generateRecommendations } from "@/lib/manager/api";
 import type { DecisionCommand } from "@/lib/manager/types";
-import { Icon } from "@/components/head/icon";
+import { Icon } from "@/components/ui/icon";
 import { Badge, buttonClasses, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
 import { DecisionDialog } from "./decision-dialog";
 

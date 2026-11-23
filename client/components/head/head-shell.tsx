@@ -7,7 +7,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ApiError, authRequest } from "@/lib/auth";
 import { loadSession } from "@/lib/head/api";
 import { useResource } from "@/lib/head/use-resource";
-import { Icon, type IconName } from "./icon";
+import { Icon, type IconName } from "@/components/ui/icon";
 import { HeadSessionProvider } from "./head-session";
 import { ErrorState, LoadingState } from "./ui";
 
@@ -23,6 +23,7 @@ export function HeadShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { data: session, error, reload } = useResource(loadSession);
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState(false);
 
   const unauthorized = error instanceof ApiError && error.status === 401;
   useEffect(() => {
@@ -31,12 +32,18 @@ export function HeadShell({ children }: { children: ReactNode }) {
 
   async function signOut() {
     if (signingOut) return;
+    setSignOutError(false);
     setSigningOut(true);
     try {
       await authRequest("logout", "POST");
-    } finally {
-      router.replace("/login");
+    } catch (error) {
+      if (!(error instanceof ApiError && error.status === 401)) {
+        setSigningOut(false);
+        setSignOutError(true);
+        return;
+      }
     }
+    window.location.replace("/login");
   }
 
   if (!session) {
@@ -94,9 +101,9 @@ export function HeadShell({ children }: { children: ReactNode }) {
             })}
           </nav>
           <div className="space-y-2 border-t border-[#e2e8e5] p-4 text-sm">
-            <Link href="/account" className="flex items-center gap-2 text-[#475569] hover:underline">
+            <div className="flex items-center gap-2 text-[#475569]">
               <Icon name="user" size={16} /><span className="truncate">{principal.email}</span>
-            </Link>
+            </div>
             <button type="button" onClick={signOut} disabled={signingOut}
               className="flex items-center gap-2 text-[#475569] hover:underline disabled:opacity-60">
               <Icon name="logout" size={16} />Вийти
@@ -114,7 +121,7 @@ export function HeadShell({ children }: { children: ReactNode }) {
               <Icon name="logout" size={16} />
             </button>
           </header>
-          <main className="mx-auto w-full max-w-[1200px] space-y-4 p-4 md:p-6">{children}</main>
+          <main className="mx-auto w-full max-w-[1200px] space-y-4 p-4 md:p-6">{signOutError && <p role="alert">Не вдалося вийти. Спробуйте ще раз.</p>}{children}</main>
         </div>
 
         <nav aria-label="Основна навігація" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-[#e2e8e5] bg-white md:hidden">
