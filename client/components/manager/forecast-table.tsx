@@ -82,6 +82,10 @@ export function ForecastTable({ view, pharmacyId, names, query, mode, onEdit }: 
                             : <><th scope="col" className="px-2 py-2 text-right font-medium">MSL</th>
                               <th scope="col" className="px-2 py-2 text-right font-medium">Max</th></>}
                           {mode === "forecast" && <>
+                            {view === "surpluses" && <>
+                              <th scope="col" className="px-2 py-2 text-right font-medium">Надлишок на дату зрізу</th>
+                              <th scope="col" className="px-2 py-2 text-right font-medium">Надлишок через 14 днів</th>
+                            </>}
                             <th scope="col" className="px-2 py-2 text-right font-medium">Попит</th>
                             <th scope="col" className="px-2 py-2 text-right font-medium">Ймовірність дефіциту</th>
                             <th scope="col" className="px-2 py-2 font-medium">До вичерпання</th>
@@ -105,6 +109,10 @@ export function ForecastTable({ view, pharmacyId, names, query, mode, onEdit }: 
                               : <><td className="px-2 py-3 text-right tabular-nums">{formatNumber(item.msl)}</td>
                                 <td className="px-2 py-3 text-right tabular-nums">{formatNumber(item.maxLevel)}</td></>}
                             {mode === "forecast" && <>
+                              {view === "surpluses" && <>
+                                <td className="px-2 py-3 text-right tabular-nums">{formatNumber(item.currentSurplus)}</td>
+                                <td className="px-2 py-3 text-right tabular-nums">{formatNumber(item.projectedSurplus)}</td>
+                              </>}
                               <td className="px-2 py-3 text-right tabular-nums">{formatNumber(toNumber(item.predictedDemand))}</td>
                               <td className="px-2 py-3 text-right tabular-nums">{formatProbability(item.shortageProbability)}</td>
                               <td className="px-2 py-3"><Days item={item} /></td>

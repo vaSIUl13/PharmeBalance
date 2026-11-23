@@ -30,6 +30,8 @@ export type ForecastItem = {
   xyzClass: "X" | "Y" | "Z" | null;
   predictedDemand: string | null;
   shortageProbability: string | null;
+  currentSurplus: number | null;
+  projectedSurplus: number | null;
   risk: {
     positionType: PositionType;
     riskLevel: RiskLevel;
@@ -38,7 +40,7 @@ export type ForecastItem = {
   stock: { pharmacyId: number; drug: { sku: string; name: string } };
 };
 
-export type CurrentPosition = Omit<ForecastItem, "forecastId" | "quantity" | "msl" | "maxLevel"> & {
+export type CurrentPosition = Omit<ForecastItem, "forecastId" | "quantity" | "msl" | "maxLevel" | "currentSurplus" | "projectedSurplus"> & {
   quantity: number;
   msl: number;
   maxLevel: number;

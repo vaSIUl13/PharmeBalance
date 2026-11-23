@@ -1,5 +1,5 @@
 export const dayMs = 86_400_000;
-export const modelVersion = 'aligned-14d-v1';
+export const modelVersion = 'aligned-14d-v2';
 export const basePolicy = {
   historyDays: 90, horizonDays: 14, minObserved: 63, minWindows: 3,
   abcA: 0.80, abcB: 0.95, xyzX: 0.10, xyzY: 0.25, mediumRisk: 0.30, highRisk: 0.70,
@@ -30,12 +30,15 @@ export function calculate(stock: Position, sales: DailySale[], asOf: Date, p: Po
   const predictedDemand = reason ? null : windows.reduce((sum, q) => sum + q, 0) / windows.length;
   const shortageProbability = reason ? null : windows.filter(q => stock.quantity - q < stock.msl).length / windows.length;
   const projected = predictedDemand === null ? null : stock.quantity - predictedDemand;
+  const daysToStockout = stock.quantity === 0 && stock.msl > 0 ? 0 :
+    predictedDemand !== null && predictedDemand > 0 && predictedDemand >= stock.quantity
+      ? Math.floor(stock.quantity * p.horizonDays / predictedDemand) : null;
   const priced = recorded.every(d => d.quantity === d.returnedQuantity || d.cents !== null);
   const turnover = priced && recorded.length === days.length ? recorded.reduce(
     (sum, d) => sum + BigInt(d.quantity - d.returnedQuantity) * (d.cents ?? 0n), 0n) : null;
   const xyzClass: 'X' | 'Y' | 'Z' | null = !historyReady || cv === null ? null : cv <= p.xyzX ? 'X' : cv <= p.xyzY ? 'Y' : 'Z';
   return { stockId: stock.stockId, quantity: stock.quantity, msl: stock.msl, maxLevel: stock.maxLevel,
-    turnover, abcClass: null as 'A' | 'B' | 'C' | null, xyzClass, predictedDemand, shortageProbability,
+    turnover, abcClass: null as 'A' | 'B' | 'C' | null, xyzClass, predictedDemand, shortageProbability, daysToStockout,
     shortage: projected === null ? null : Math.max(0, Math.ceil(stock.msl - projected)),
     currentSurplus: Math.max(0, stock.quantity - stock.maxLevel),
     projectedSurplus: projected === null ? null : Math.max(0, Math.floor(projected - stock.maxLevel)),

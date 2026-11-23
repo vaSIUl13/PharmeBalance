@@ -15,6 +15,27 @@ export type AdminUser = {
 
 export type AdminPharmacy = Pharmacy & { latitude: string; longitude: string };
 
+export type ExternalPharmacy = {
+  id: number;
+  source: string;
+  name: string | null;
+  city: string | null;
+  address: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  pharmacyId: number | null;
+};
+
+export type CreatePharmacyInput = {
+  code: string;
+  name: string;
+  city: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+  externalRecordIds?: number[];
+};
+
 export type AuditEventType =
   | "LOGIN" | "ACCOUNT_CREATED" | "ACCOUNT_BLOCKED" | "ROLE_CHANGED" | "PHARMACY_ASSIGNED"
   | "THRESHOLDS_CHANGED" | "REFERENCE_EDITED" | "REPORT_EXPORTED";

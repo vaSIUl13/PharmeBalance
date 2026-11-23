@@ -37,6 +37,15 @@ test('missing observations, censored demand and insufficient windows remain expl
   assert.equal(result(history().map(s=>({...s,stockout:null}))).quality.unknownAvailabilityDays,90);
 });
 
+test('estimates depletion within the horizon from supported demand', () => {
+  assert.equal(result(history(), { quantity: 5 }).daysToStockout, 5);
+  assert.equal(result(history(), { quantity: 14 }).daysToStockout, 14);
+  assert.equal(result(history(), { quantity: 15 }).daysToStockout, null);
+  assert.equal(result(history(() => 0), { quantity: 5 }).daysToStockout, null);
+  assert.equal(result([], { quantity: 5 }).daysToStockout, null);
+  assert.equal(result([], { quantity: 0 }).daysToStockout, 0);
+});
+
 test('ending exactly at MSL is sufficient, and only quantities above Max are surplus', () => {
   const atMinimum = result(history(), { quantity: 17, msl: 3, maxLevel: 17 });
   assert.equal(atMinimum.predictedDemand, 14);
