@@ -39,7 +39,7 @@ export default function Login() {
         return;
       }
       const user = await authRequest<{ role: string }>("me").catch(() => null);
-      const homes: Record<string, string> = { head: "/head/dashboard", logist: "/logist/queue" };
+      const homes: Record<string, string> = { manager: "/manager/dashboard", head: "/head/dashboard", logist: "/logist/queue" };
       router.replace(homes[user?.role ?? ""] ?? "/account");
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Не вдалося увійти.";
