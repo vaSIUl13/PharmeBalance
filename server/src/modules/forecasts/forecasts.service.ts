@@ -18,9 +18,9 @@ export class ForecastsService {
     if (!run) return { run: null, items: [], next: null };
     const where: Prisma.ForecastWhereInput = { runId: run.id, stock: { pharmacyId, pharmacy: pharmacyScope(user) } };
     if (view === 'risks') where.OR = [
-      { shortageProbability: { gt: 0 } }, { quantity: { lt: this.db.forecast.fields.msl } },
+      { shortageProbability: { gt: 0 } }, { quantity: { lt: this.db.forecast.fields.msl } }, { risk: { daysToStockout: { not: null } } },
     ];
-    if (view === 'surpluses') where.currentSurplus = { gt: 0 };
+    if (view === 'surpluses') where.OR = [{ currentSurplus: { gt: 0 } }, { projectedSurplus: { gt: 0 } }];
     const rows = await this.db.forecast.findMany({ where, take: 51,
       ...(after ? { cursor: { forecastId: after }, skip: 1 } : {}),
       orderBy: view === 'risks' ? [{ shortageProbability: { sort: 'desc', nulls: 'last' } }, { forecastId: 'asc' }] : { forecastId: 'asc' },

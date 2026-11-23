@@ -46,7 +46,7 @@ export async function publishSnapshot(tx: Prisma.TransactionClient, asOf: Date, 
     const results = stocks.map(stock => calculate(stock, grouped.get(stock.stockId) ?? [], asOf, policy));
     classifyPharmacy(results, policy);
     const forecasts = await tx.forecast.createManyAndReturn({
-      data: results.map(({ turnover, ...r }) => ({ ...r, runId: run.id, modelVersion, horizonDays: policy.horizonDays })),
+      data: results.map(({ turnover, daysToStockout, ...r }) => ({ ...r, runId: run.id, modelVersion, horizonDays: policy.horizonDays })),
       select: { forecastId: true, stockId: true },
     });
     const ids = new Map(forecasts.map(f => [f.stockId, f.forecastId]));
@@ -54,10 +54,11 @@ export async function publishSnapshot(tx: Prisma.TransactionClient, asOf: Date, 
     for (const f of results) {
       const prob = f.shortageProbability ?? 0;
       const alreadyBelow = f.quantity < f.msl;
-      if (alreadyBelow || prob > 0 || f.currentSurplus > 0) {
-        risks.push({ forecastId: ids.get(f.stockId)!, positionType: alreadyBelow || prob > 0 ? 'SHORTAGE' : 'SURPLUS',
+      const shortage = alreadyBelow || prob > 0 || f.daysToStockout !== null;
+      if (shortage || f.currentSurplus > 0) {
+        risks.push({ forecastId: ids.get(f.stockId)!, positionType: shortage ? 'SHORTAGE' : 'SURPLUS',
           riskLevel: alreadyBelow || prob >= policy.highRisk ? 'HIGH' : prob >= policy.mediumRisk ? 'MEDIUM' : 'LOW',
-          surplusQuantity: f.currentSurplus });
+          surplusQuantity: f.currentSurplus, daysToStockout: f.daysToStockout });
       }
     }
     if (risks.length) await tx.risk.createMany({ data: risks });

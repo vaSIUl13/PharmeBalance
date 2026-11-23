@@ -11,14 +11,29 @@ export async function testAdministration(t: TestContext, context: SignedInFixtur
       assert.equal((await request('/users/' + id + '/block', { cookies: admin, method: 'POST' })).status, 400);
     }
   });
-  await t.test('administrators assign exactly one head, activate and audit a managed pharmacy', async () => {
+  await t.test('administrators link a catalog pharmacy, assign exactly one head, activate and audit it', async test => {
+    const external = await db.externalPharmacy.create({ data: {
+      source: 'OSM', externalId: 'admin-' + run, name: 'Catalog ' + run, latitude: 49, longitude: 24,
+    } });
+    test.after(async () => { await db.externalPharmacy.delete({ where: { id: external.id } }); });
+    assert.equal((await request('/pharmacies/external?q=' + run, { cookies: head })).status, 403);
+    const catalog = await request('/pharmacies/external?q=' + run, { cookies: admin });
+    assert.equal(catalog.status, 200);
+    assert.deepEqual((await catalog.json()).items.map((row: { id: number }) => row.id), [external.id]);
     const created = await request('/pharmacies', { method: 'POST', cookies: admin, body: {
       code: 'M' + run, name: 'Managed', city: 'Test', address: 'Test', latitude: 49, longitude: 24,
+      externalRecordIds: [external.id],
     } });
     assert.equal(created.status, 201);
     const { pharmacyId, isActive } = await created.json();
     managedIds.push(pharmacyId);
     assert.equal(isActive, false);
+    assert.equal((await db.externalPharmacy.findUniqueOrThrow({ where: { id: external.id } })).pharmacyId, pharmacyId);
+    assert.equal((await request('/pharmacies', { method: 'POST', cookies: admin, body: {
+      code: 'X' + run, name: 'Duplicate link', city: 'Test', address: 'Test', latitude: 49, longitude: 24,
+      externalRecordIds: [external.id],
+    } })).status, 409);
+    assert.equal(await db.pharmacy.count({ where: { code: 'X' + run } }), 0);
     const body = { login: 'new-' + run, email: run + '@example.invalid', firstName: 'New',
       lastName: 'Head', password, role: 'manager' };
     const create = (cookies: string | undefined, data: unknown) => request('/users', { method: 'POST', cookies, body: data });

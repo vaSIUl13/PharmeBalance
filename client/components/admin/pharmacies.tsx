@@ -3,11 +3,14 @@
 import { useState } from "react";
 import { loadPharmacies } from "@/lib/admin/api";
 import { useResource } from "@/lib/head/use-resource";
-import { Badge, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
+import { Badge, buttonClasses, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
+import { PharmacyDialog } from "./pharmacy-dialog";
 
 export function Pharmacies() {
   const pharmacies = useResource(loadPharmacies);
   const [query, setQuery] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [message, setMessage] = useState("");
 
   const items = pharmacies.data ?? [];
   const text = query.trim().toLowerCase();
@@ -15,13 +18,16 @@ export function Pharmacies() {
 
   return (
     <>
-      <PageHeader title="Аптеки мережі" subtitle="Довідник керованих аптек" />
+      <PageHeader title="Аптеки мережі" subtitle="Довідник керованих аптек" actions={
+        <button type="button" className={buttonClasses.primary} onClick={() => setAdding(true)}>Додати аптеку</button>
+      } />
+      {message && <Notice tone="success">{message}</Notice>}
       <div className="grid gap-3 sm:grid-cols-3">
         <Kpi label="Усього аптек" icon="pin" value={pharmacies.data ? items.length : "…"} />
         <Kpi label="Активні" icon="check" tone="success" value={pharmacies.data ? items.filter(item => item.isActive).length : "…"} />
         <Kpi label="Неактивні" icon="alert" tone="warning" value={pharmacies.data ? items.filter(item => !item.isActive).length : "…"} />
       </div>
-      <Notice tone="neutral">Аптека стає активною, коли їй призначають завідувача. Додавання нових аптек у цьому інтерфейсі ще не реалізоване.</Notice>
+      <Notice tone="neutral">Аптека стає активною після призначення завідувача в розділі «Користувачі».</Notice>
 
       <Card>
         <form className="border-b border-[#e2e8e5] p-4" role="search" onSubmit={event => event.preventDefault()}>
@@ -60,6 +66,12 @@ export function Pharmacies() {
               )}
         </ResourceGate>
       </Card>
+      {adding && <PharmacyDialog onClose={() => setAdding(false)} onCreated={name => {
+        setAdding(false);
+        setQuery("");
+        setMessage("Аптеку «" + name + "» додано.");
+        pharmacies.reload();
+      }} />}
     </>
   );
 }

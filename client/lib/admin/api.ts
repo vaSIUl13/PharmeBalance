@@ -1,6 +1,6 @@
 import { apiRequest, authRequest } from "@/lib/auth";
 import type { Principal } from "@/lib/head/types";
-import type { AdminPharmacy, AdminUser, AuditPage, CreateUserInput, RoleCode } from "./types";
+import type { AdminPharmacy, AdminUser, AuditPage, CreatePharmacyInput, CreateUserInput, ExternalPharmacy, RoleCode } from "./types";
 
 const pageLimit = 40;
 
@@ -28,6 +28,16 @@ export function loadUsers(): Promise<AdminUser[]> {
 
 export function loadPharmacies(): Promise<AdminPharmacy[]> {
   return loadAll<AdminPharmacy>("pharmacies");
+}
+
+export function createPharmacy(input: CreatePharmacyInput): Promise<AdminPharmacy> {
+  return apiRequest("pharmacies", "POST", input);
+}
+
+export function searchExternalPharmacies(query: string, after?: number): Promise<Page<ExternalPharmacy>> {
+  const params = new URLSearchParams({ q: query });
+  if (after !== undefined) params.set("after", String(after));
+  return apiRequest("pharmacies/external?" + params);
 }
 
 export function loadAudit(before?: number): Promise<AuditPage> {
