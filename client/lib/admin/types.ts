@@ -27,7 +27,7 @@ export type ExternalPharmacy = {
 };
 
 export type CreatePharmacyInput = {
-  code: string;
+  code?: string;
   name: string;
   city: string;
   address: string;

@@ -215,9 +215,8 @@ async function main() {
       !Number.isFinite(asOf.getTime()) || asOf.toISOString().slice(0, 10) !== values['as-of']) {
     throw new Error('Provide a valid integer seed and YYYY-MM-DD date');
   }
-  if (values.apply && (!process.env.DEMO_DATABASE_URL || !/_demo$/.test(new URL(process.env.DEMO_DATABASE_URL).pathname) ||
-      new URL(process.env.DEMO_DATABASE_URL).pathname === new URL(process.env.DATABASE_URL ?? 'postgresql://localhost/').pathname)) {
-    throw new Error('Set DEMO_DATABASE_URL to a separate migrated database with a name ending in _demo');
+  if (values.apply && (!process.env.DEMO_DATABASE_URL || !/_demo$/.test(new URL(process.env.DEMO_DATABASE_URL).pathname))) {
+    throw new Error('Set DEMO_DATABASE_URL to a migrated demo database with a name ending in _demo');
   }
   const db = values.apply ? new PrismaClient({ datasourceUrl: process.env.DEMO_DATABASE_URL }) : null;
   try { console.log(JSON.stringify(await seedDemo(db, values.profile, seed, asOf, values.apply), null, 2)); }

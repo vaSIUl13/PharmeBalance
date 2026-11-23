@@ -7,9 +7,10 @@ import { basePolicy, dayMs } from './forecast-model';
 
 async function main() {
   const { values } = parseArgs({ options: { demo: { type: 'boolean' }, watch: { type: 'boolean' }, 'as-of': { type: 'string' } } });
-  const synthetic = !!values.demo;
-  const url = synthetic ? process.env.DEMO_DATABASE_URL : process.env.DATABASE_URL;
-  if (!url || new URL(url).pathname.endsWith('_demo') !== synthetic) throw Error('Check forecast database and --demo');
+  const url = values.demo ? process.env.DEMO_DATABASE_URL : process.env.DATABASE_URL;
+  if (!url) throw Error('Configure the forecast database');
+  const synthetic = new URL(url).pathname.endsWith('_demo');
+  if (values.demo && !synthetic) throw Error('--demo requires a database ending in _demo');
   if (values['as-of'] && (!synthetic || values.watch || !validDate(values['as-of']))) throw Error('Historical dates require a one-off demo run');
   const policy = { ...basePolicy };
   for (const [key, name] of [['abcA', 'FORECAST_ABC_A'], ['abcB', 'FORECAST_ABC_B'],

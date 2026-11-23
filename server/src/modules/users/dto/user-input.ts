@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { minPasswordLength } from '../../auth/auth-security';
 
 const roles = ['admin', 'manager', 'head', 'logist'] as const;
 type RoleCode = typeof roles[number];
@@ -19,7 +20,7 @@ export class CreateUserDto extends UserAccessDto {
   @ApiProperty({ format: 'email', maxLength: 100 }) email!: string;
   @ApiProperty({ maxLength: 60 }) firstName!: string;
   @ApiProperty({ maxLength: 60 }) lastName!: string;
-  @ApiProperty({ format: 'password', writeOnly: true, minLength: 12, maxLength: 256 }) password!: string;
+  @ApiProperty({ format: 'password', writeOnly: true, minLength: minPasswordLength, maxLength: 256 }) password!: string;
 }
 
 function record(input: unknown): Record<string, unknown> {
@@ -43,16 +44,14 @@ export function parseAccess(input: unknown): UserAccessDto {
   return { role: code, pharmacyId };
 }
 
-export const registrationPasswordMinLength = 8;
-
-export function parseCreate(input: unknown, minimumPasswordLength = 12): CreateUserDto {
+export function parseCreate(input: unknown): CreateUserDto {
   const body = record(input);
   const { role, pharmacyId } = parseAccess(body);
   if (!role) throw new BadRequestException('Role is required');
   const email = stringField(body, 'email', 100).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('Invalid email');
   const password = body.password;
-  if (typeof password !== 'string' || password.length < minimumPasswordLength || password.length > 256) throw new BadRequestException('Invalid password');
+  if (typeof password !== 'string' || password.length < minPasswordLength || password.length > 256) throw new BadRequestException('Invalid password');
   return { email, password, role, pharmacyId, login: stringField(body, 'login', 50),
     firstName: stringField(body, 'firstName', 60), lastName: stringField(body, 'lastName', 60) };
 }

@@ -17,9 +17,10 @@ test('user creation normalizes identity fields and preserves the password verbat
   assert.deepEqual(parseCreate(user), {
     ...user, login: 'head', firstName: 'Олена', lastName: 'Петренко', email: 'head@example.org',
   });
+  assert.equal(parseCreate({ ...user, password: 'test1234' }).password, 'test1234');
   assert.equal(parseCreate({ ...user, password: 'x'.repeat(256) }).password.length, 256);
   for (const fields of [
-    { password: 'x'.repeat(11) }, { password: 'x'.repeat(257) }, { email: 'bad@address' },
+    { password: 'x'.repeat(7) }, { password: 'x'.repeat(257) }, { email: 'bad@address' },
     { role: undefined }, { login: 'x'.repeat(51) }, { firstName: ' ' }, { lastName: 'x'.repeat(61) },
   ]) {
     assert.throws(() => parseCreate({ ...user, ...fields }), BadRequestException);

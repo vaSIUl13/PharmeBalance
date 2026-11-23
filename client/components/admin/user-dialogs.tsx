@@ -76,8 +76,8 @@ export function CreateUserDialog({ pharmacies, onClose, onDone }: {
     const text = (name: string) => String(form.get(name) ?? "").trim();
     const password = String(form.get("password") ?? "");
     const pharmacy = text("pharmacyId");
-    if (password.length < 12) {
-      setProblem("Пароль має містити щонайменше 12 символів.");
+    if (password.length < 8) {
+      setProblem("Пароль має містити щонайменше 8 символів.");
       return;
     }
     setProblem("");
@@ -86,7 +86,12 @@ export function CreateUserDialog({ pharmacies, onClose, onDone }: {
       password, role, ...(needsPharmacy(role) && pharmacy ? { pharmacyId: Number(pharmacy) } : {}),
     }), "Користувача створено.", failure => {
       if (failure?.status === 409) return "Користувач із таким логіном або email уже існує, або аптека вже має завідувача.";
-      if (failure?.status === 400) return "Перевірте введені дані: для завідувача потрібна аптека, email має бути коректним.";
+      if (failure?.status === 400) {
+        if (failure.message === "Invalid password") return "Сервер відхилив пароль. Перевірте, чи він має від 8 до 256 символів.";
+        if (failure.message === "Invalid email") return "Перевірте формат email.";
+        if (failure.message === "A pharmacy is required for a head") return "Виберіть аптеку для завідувача.";
+        return "Перевірте введені дані й повторіть спробу.";
+      }
       if (failure?.status === 403) return "Недостатньо прав для створення користувачів.";
       return "Не вдалося створити користувача. Спробуйте ще раз.";
     });
@@ -112,9 +117,9 @@ export function CreateUserDialog({ pharmacies, onClose, onDone }: {
           )}
           <div className="sm:col-span-2">
             <label htmlFor="new-password" className={labelClasses}>Тимчасовий пароль</label>
-            <input id="new-password" name="password" type="password" className={inputClasses} minLength={12} maxLength={256}
+            <input id="new-password" name="password" type="password" className={inputClasses} minLength={8} maxLength={256}
               required autoComplete="new-password" aria-describedby="new-password-hint" />
-            <p id="new-password-hint" className="mt-1 text-xs text-[#64748b]">Щонайменше 12 символів. Передайте його користувачеві безпечним каналом.</p>
+            <p id="new-password-hint" className="mt-1 text-xs text-[#64748b]">Щонайменше 8 символів. Передайте його користувачеві безпечним каналом.</p>
           </div>
           {(problem || error) && <div className="sm:col-span-2"><Notice tone="danger">{problem || error}</Notice></div>}
         </div>

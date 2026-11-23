@@ -24,6 +24,9 @@ function bbox(value) {
 }
 
 async function makeSource(name, options, requestFactory = createHttpClient) {
+  if (options.ukraine && (name !== 'osm' || options.bbox || options.file)) {
+    throw new Error('--ukraine requires online OSM without --bbox or --file');
+  }
   if (name === 'drlz') {
     if (options.file || options.mapping || options.delimiter || options.bbox || options['overpass-url']) {
       throw new Error('DRLZ does not accept pharmacy input options');
@@ -114,14 +117,17 @@ async function makeSource(name, options, requestFactory = createHttpClient) {
     };
   }
 
-  const bounds = bbox(options.bbox);
-  const url = new URL(options['overpass-url'] ?? 'https://overpass-api.de/api/interpreter');
+  const bounds = options.ukraine ? undefined : bbox(options.bbox);
+  const url = new URL(options['overpass-url'] ?? (process.env.CATALOG_OVERPASS_URL || 'https://overpass-api.de/api/interpreter'));
   if (url.protocol !== 'https:' || url.username || url.password || url.hash) throw new Error('Overpass URL must be an HTTPS endpoint');
-  const query = '[out:json][timeout:20];nwr["amenity"="pharmacy"](' + bounds + ');out center meta;';
-  const request = requestFactory({ interval: 2500, userAgent: process.env.CATALOG_USER_AGENT ?? 'PharmeBalance-catalog/1.0' });
+  const query = options.ukraine
+    ? '[out:json][timeout:75];area["ISO3166-1"="UA"]["admin_level"="2"]->.ua;nwr["amenity"="pharmacy"](area.ua);out center meta;'
+    : '[out:json][timeout:20];nwr["amenity"="pharmacy"](' + bounds + ');out center meta;';
+  const request = requestFactory({ interval: 2500, timeout: options.ukraine ? 90_000 : 25_000,
+    userAgent: process.env.CATALOG_USER_AGENT ?? 'PharmeBalance-catalog/1.0' });
   let records;
   return {
-    source: 'OSM', scope: url.href + '|' + bounds, isDrlz: false,
+    source: 'OSM', scope: url.href + '|' + (bounds ?? 'UA'), isDrlz: false,
     start: () => ({ offset: 0 }),
     async page() {
       records ??= parseOverpass((await request(url.href, {

@@ -23,11 +23,16 @@ export const { parseDrlz, parseOverpass, parsePharmacyCsv, packageKey, drlzUrl, 
   createHttpClient(settings: { interval: number; timeout: number }): (url: string) => Promise<{ body: unknown }>;
 } = require(resolve(catalog, 'adapters.cjs'));
 
-export const { makeSource }: {
-  makeSource(source: 'drlz', options: { mode: 'incremental' }): Promise<{
+type SourceFactory = {
+  (source: 'drlz', options: { mode: 'incremental' }): Promise<{
     start(since: string): { url: string };
   }>;
-} = require(resolve(catalog, 'sync.cjs'));
+  (source: 'osm', options: { ukraine: true; 'overpass-url': string },
+    requestFactory: () => (url: string, options: { body: URLSearchParams }) => Promise<{ body: unknown }>,
+  ): Promise<{ scope: string; page(): Promise<{ records: PharmacyRecord[] }> }>;
+};
+
+export const { makeSource }: { makeSource: SourceFactory } = require(resolve(catalog, 'sync.cjs'));
 
 type Scenario = {
   initial: number;

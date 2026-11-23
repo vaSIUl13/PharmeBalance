@@ -3,10 +3,12 @@ import { PrismaClient, Source } from '@prisma/client';
 const batchSize = 50;
 
 async function main() {
-  const demo = process.argv.includes('--demo');
-  const database = demo ? process.env.DEMO_DATABASE_URL : process.env.DATABASE_URL;
+  const explicitDemo = process.argv.includes('--demo');
+  const database = explicitDemo ? process.env.DEMO_DATABASE_URL : process.env.DATABASE_URL;
   const base = new URL(process.env.OSRM_BASE_URL ?? '');
-  if (!database || new URL(database).pathname.endsWith('_demo') !== demo) throw Error('Check distance database and --demo');
+  if (!database) throw Error('Configure the routing database');
+  const demo = new URL(database).pathname.endsWith('_demo');
+  if (explicitDemo && !demo) throw Error('--demo requires a database ending in _demo');
   if (!['http:', 'https:'].includes(base.protocol)) throw Error('Set an HTTP(S) OSRM_BASE_URL');
   const db = new PrismaClient({ datasourceUrl: database });
   try {

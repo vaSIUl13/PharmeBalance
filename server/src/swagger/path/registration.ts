@@ -1,6 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { ApiBody, ApiForbiddenResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { registrationPasswordMinLength } from '../../modules/users/dto/user-input';
+import { minPasswordLength } from '../../modules/auth/auth-security';
 
 const review = (summary: string) => applyDecorators(ApiOperation({ summary }),
   ApiForbiddenResponse({ description: 'Requires the superadmin role and REGISTRATION_REVIEW permission' }));
@@ -14,7 +14,7 @@ export const registrationDocs = {
       firstName: { type: 'string', maxLength: 60 }, lastName: { type: 'string', maxLength: 60 },
       email: { type: 'string', format: 'email', maxLength: 100 },
       login: { type: 'string', pattern: '^[A-Za-z0-9.]{4,50}$' },
-      password: { type: 'string', format: 'password', minLength: registrationPasswordMinLength, maxLength: 256, writeOnly: true },
+      password: { type: 'string', format: 'password', minLength: minPasswordLength, maxLength: 256, writeOnly: true },
       role: { type: 'string', enum: ['admin', 'logist', 'manager', 'head'] },
       consent: { type: 'boolean' },
     },

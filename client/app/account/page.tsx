@@ -78,7 +78,7 @@ export default function Account() {
               <input className="block rounded border p-2" name="currentPassword" type="password" autoComplete="current-password" maxLength={256} required />
             </label>
             <label className="block">Новий пароль
-              <input className="block rounded border p-2" name="newPassword" type="password" autoComplete="new-password" minLength={12} maxLength={256} required />
+              <input className="block rounded border p-2" name="newPassword" type="password" autoComplete="new-password" minLength={8} maxLength={256} required />
             </label>
             <button className="underline disabled:opacity-50" disabled={busy}>Змінити пароль</button>
           </form>

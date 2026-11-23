@@ -1,4 +1,5 @@
 const { parseArgs } = require('node:util');
+const { setTimeout: delay } = require('node:timers/promises');
 const { PrismaClient } = require('@prisma/client');
 const { hash } = require('./adapters.cjs');
 const { canonical, equal } = require('./record-values.cjs');
@@ -15,6 +16,8 @@ async function writeRecord(db, adapter, row, apply) {
     source_externalId: { source: adapter.source, externalId: row.externalId },
   };
   const existing = await delegate.findUnique({ where });
+  if (adapter.source === 'OSM' && existing?.city && !data.city &&
+      equal(existing, { latitude: data.latitude, longitude: data.longitude })) data.city = existing.city;
   if (existing && ((existing.sourceModifiedAt && data.sourceModifiedAt && existing.sourceModifiedAt > data.sourceModifiedAt) ||
       equal(existing, data))) return 'unchanged';
   if (existing && adapter.isDrlz && existing.sourceId !== row.sourceId) throw new Error('DRLZ registration number maps to two source identifiers');
@@ -149,6 +152,7 @@ async function main() {
     mode: { type: 'string' }, since: { type: 'string' }, file: { type: 'string' }, mapping: { type: 'string' },
     delimiter: { type: 'string' }, bbox: { type: 'string' }, 'overpass-url': { type: 'string' },
     limit: { type: 'string' }, 'dry-run': { type: 'boolean' }, apply: { type: 'boolean' }, resume: { type: 'boolean' },
+    ukraine: { type: 'boolean' }, watch: { type: 'boolean' },
   } });
   if (positionals.length !== 1 || (values.apply && values['dry-run']) || (values.resume && !values.apply)) {
     throw new Error('Choose one source and one mode; --resume requires --apply');
@@ -156,11 +160,22 @@ async function main() {
   const limit = values.limit === undefined ? (values.apply ? Infinity : 20) : Number(values.limit);
   if (limit !== Infinity && (!Number.isSafeInteger(limit) || limit < 1)) throw new Error('--limit must be a positive integer');
   if (values.limit !== undefined && limit === Infinity) throw new Error('--limit must be finite');
-  const adapter = await makeSource(positionals[0], values);
+  if (values.watch && (positionals[0] !== 'osm' || !values.ukraine || !values.apply || values.resume || values.limit)) {
+    throw new Error('--watch requires osm --ukraine --apply without --resume or --limit');
+  }
   const db = new PrismaClient();
   try {
-    const result = await synchronize(db, adapter, { ...values, limit });
-    console.log(JSON.stringify(result, null, 2));
+    do {
+      try {
+        const adapter = await makeSource(positionals[0], values);
+        const result = await synchronize(db, adapter, { ...values, limit });
+        console.log(JSON.stringify(result, null, 2));
+      } catch (error) {
+        if (!values.watch) throw error;
+        console.error(safeError(error));
+      }
+      if (values.watch) await delay(24 * 60 * 60 * 1000);
+    } while (values.watch);
   } finally {
     await db.$disconnect();
   }

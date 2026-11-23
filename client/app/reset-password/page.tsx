@@ -58,8 +58,8 @@ export default function ResetPassword() {
       <form className={styles.form} onSubmit={submit} method="post" key={String(Boolean(token))}>
         {token ? (
           <>
-            <AuthField label="Новий пароль" name="password" type="password" minLength={12} maxLength={256}
-              hint="Щонайменше 12 символів" autoComplete="new-password" required />
+            <AuthField label="Новий пароль" name="password" type="password" minLength={8} maxLength={256}
+              hint="Щонайменше 8 символів" autoComplete="new-password" required />
             <AuthField label="Повторіть пароль" name="confirmPassword" type="password" autoComplete="new-password" maxLength={256} required />
           </>
         ) : (

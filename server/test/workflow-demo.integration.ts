@@ -36,8 +36,8 @@ test('demo deficit, reservation, dispatch and receipt through the role APIs', as
     assert(cookie);
     return cookie;
   }
-  const manager = await login('olena.koval');
-  const head = await login('mariia.shevchenko');
+  const manager = await login('manager');
+  const head = await login('head');
   const risks = await request('/risks', manager);
   assert.equal(risks.status, 200);
   const { run, items } = await risks.json() as { run: { id: number }; items: unknown[] };
@@ -56,7 +56,7 @@ test('demo deficit, reservation, dispatch and receipt through the role APIs', as
       donorStock: { pharmacy: { code: { in: ['SYN-DEV-002', 'SYN-DEV-003'] } }, drug: { registrationId: { not: null } } } },
     orderBy: { priority: 'asc' }, include: { donorStock: { include: { pharmacy: true, drug: true } }, recipientStock: true },
   });
-  const logist = await login(transfer.donorStock.pharmacy.code === 'SYN-DEV-002' ? 'andrii.melnyk' : 'taras.bondar');
+  const logist = await login(transfer.donorStock.pharmacy.code === 'SYN-DEV-002' ? 'logist-1' : 'logist-2');
   const path = '/recommendations/' + transfer.recommendationId;
   const act = (command: string, cookie: string) => request(path + '/actions/' + command, cookie,
     command === 'RECEIVE' ? { quantity: transfer.quantity } : {});

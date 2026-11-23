@@ -3,7 +3,7 @@ import { authDocs } from '../../swagger/path/auth';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { type AuthRequest, Public } from './auth.guard';
-import { challengeCookie, cookieValue, sessionCookie } from './auth-security';
+import { challengeCookie, cookieValue, minPasswordLength, sessionCookie } from './auth-security';
 
 const cookieOptions = { httpOnly: true, secure: true, sameSite: 'lax', path: '/' } as const;
 
@@ -103,7 +103,7 @@ export class AuthController {
   @Post('password/change')
   @HttpCode(204)
   async change(@Body() body: unknown, @Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
-    await this.auth.changePassword(req.principal!, field(body, 'currentPassword', 256), field(body, 'newPassword', 256, 12));
+    await this.auth.changePassword(req.principal!, field(body, 'currentPassword', 256), field(body, 'newPassword', 256, minPasswordLength));
     res.clearCookie(sessionCookie, cookieOptions);
   }
 
@@ -122,7 +122,7 @@ export class AuthController {
   async reset(@Body() body: unknown, @Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
     const raw = field(body, 'token', 43, 43);
     if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) throw new BadRequestException('Invalid token');
-    await this.auth.completeReset(raw, field(body, 'newPassword', 256, 12), ip(req));
+    await this.auth.completeReset(raw, field(body, 'newPassword', 256, minPasswordLength), ip(req));
     res.clearCookie(sessionCookie, cookieOptions);
   }
 }

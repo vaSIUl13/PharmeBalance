@@ -5,7 +5,7 @@ import { AuthRedisService } from '../auth/auth-redis.service';
 import { hashPassword } from '../auth/auth-security';
 import type { Principal } from '../auth/auth.service';
 import { EmailService } from '../notifications/email.service';
-import { type CreateUserDto, parseAccess, parseCreate, registrationPasswordMinLength } from './dto/user-input';
+import { type CreateUserDto, parseAccess, parseCreate } from './dto/user-input';
 import { lockUser } from './pharmacy-assignments';
 import { UsersService } from './users.service';
 
@@ -41,7 +41,7 @@ export class RegistrationService {
     if (!body || typeof body !== 'object' || !('consent' in body) || body.consent !== true) {
       throw new BadRequestException('Consent is required');
     }
-    const { password, pharmacyId, role, ...profile } = parseCreate(body, registrationPasswordMinLength);
+    const { password, pharmacyId, role, ...profile } = parseCreate(body);
     if (pharmacyId !== undefined || !/^[a-zA-Z0-9.]{4,50}$/.test(profile.login) ||
         !/\p{L}/u.test(password) || !/\d/.test(password)) {
       throw new BadRequestException('Invalid registration details');
@@ -81,7 +81,7 @@ export class RegistrationService {
     approve.searchParams.set('decision', 'approve');
     reject.searchParams.set('decision', 'reject');
     const escape = (value: string) => value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
-    await this.email.sendRegistrationNotice(to, {
+    await this.email.sendAccountNotice(to, {
       subject: 'PharmaBalance: нова заявка на реєстрацію',
       text: 'Approve: ' + approve.href + '\nReject: ' + reject.href,
       html: '<p>Перегляньте заявку та підтвердьте рішення в кабінеті.</p><p><a href="' +
@@ -142,7 +142,7 @@ export class RegistrationService {
             ? 'Ваш обліковий запис створено. Зверніться до суперадміністратора, щоб налаштувати двофакторну перевірку перед першим входом.'
             : 'Ваш обліковий запис створено. Увійдіть до PharmaBalance за допомогою пошти й пароля, вказаних під час реєстрації.'
           : 'Вашу заявку на реєстрацію у PharmaBalance відхилено.';
-        void this.email.sendRegistrationNotice(recipient.email, { subject, text, html: '<p>' + text + '</p>' })
+        void this.email.sendAccountNotice(recipient.email, { subject, text, html: '<p>' + text + '</p>' })
           .catch(() => this.logger.warn('Registration decision email failed'));
       }
     } catch (error) {
