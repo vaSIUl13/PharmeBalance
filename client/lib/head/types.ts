@@ -38,6 +38,12 @@ export type ForecastItem = {
   stock: { pharmacyId: number; drug: { sku: string; name: string } };
 };
 
+export type CurrentPosition = Omit<ForecastItem, "forecastId" | "quantity" | "msl" | "maxLevel"> & {
+  quantity: number;
+  msl: number;
+  maxLevel: number;
+};
+
 export type ForecastPage = {
   run: { id: number; asOf: string } | null;
   items: ForecastItem[];

@@ -18,6 +18,14 @@ export class StocksController {
       sku === undefined ? undefined : stockSku(sku));
   }
 
+  @stocksDocs.current
+  @Get('current')
+  @Permissions('PHARMACY_VIEW')
+  @Header('Cache-Control', 'no-store')
+  current(@Req() req: AuthRequest, @Query('after') after?: string) {
+    return this.stocks.currentPositions(req.principal!, optionalQueryId(after, 'after'));
+  }
+
   @stocksDocs.create
   @Post()
   @Permissions('THRESHOLDS_EDIT')

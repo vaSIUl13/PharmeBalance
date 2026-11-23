@@ -110,6 +110,14 @@ export async function testRedistribution(t: TestContext, context: TransferFixtur
       act('RECEIVE', head, { quantity: 100 }, id), importStock()])).map(r => r.status), [200, 200, 422]);
     assert.deepEqual((await current()).slice(0, 2).map(s => [s.quantity, s.reservedQuantity]),
       [[recipient.quantity + 100, 0], [donor.quantity - 100, 0]]);
+    const positions = await request('/stocks/current', { cookies: head });
+    assert.equal(positions.status, 200);
+    const page = await positions.json() as { items: { stockId: number; quantity: number; predictedDemand: string | null }[] };
+    const received = page.items.find(item => item.stockId === recipientId);
+    assert.equal(received?.quantity, recipient.quantity + 100);
+    assert.equal(Number(received?.predictedDemand), Number(nextForecast.predictedDemand));
+    assert(!page.items.some(item => item.stockId === donorId));
+    assert.equal((await request('/stocks/current', { cookies: logist })).status, 403);
     const history = await request('/recommendations/' + id + '/history', { cookies: manager });
     assert.deepEqual((await history.json()).map((a: { actionType: { code: string }; quantity: number; userId: number }) => [a.actionType.code, a.quantity, a.userId]),
       [['CONFIRM', 100, accounts.manager.userId], ['DISPATCH', 100, accounts.logist.userId], ['RECEIVE', 100, accounts.head.userId]]);

@@ -34,7 +34,7 @@ export const positionStatuses: Record<PositionStatus, { label: string; tone: Ton
   normal: { label: "Норма", tone: "success" },
 };
 
-export function positionStatus(item: ForecastItem): PositionStatus {
+export function positionStatus(item: Pick<ForecastItem, "risk">): PositionStatus {
   if (item.risk?.positionType === "SHORTAGE") return "shortage";
   if (item.risk?.positionType === "SURPLUS") return "surplus";
   return "normal";

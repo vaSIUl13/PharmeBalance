@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import { PrismaClient } from '@prisma/client';
 import { calculateRun } from '../src/modules/forecasts/forecast-run';
+import { runForecastPipeline } from '../src/modules/forecasts/forecast-pipeline';
 
 test('dev demo publishes one complete snapshot and reuses it for concurrent workers', async (t) => {
   const url = process.env.DEMO_DATABASE_URL;
@@ -35,4 +36,19 @@ test('dev demo publishes one complete snapshot and reuses it for concurrent work
   assert(diagnostics.some(({ censoredDays }) => typeof censoredDays === 'number' && censoredDays > 0));
   assert(rows.some(({ projectedSurplus }) => projectedSurplus !== null && projectedSurplus > 0));
   assert(rows.some(({ shortage }) => Number(shortage) > 0));
+
+  const [first, concurrent] = await Promise.all([
+    runForecastPipeline(db, day, true),
+    runForecastPipeline(db, day, true),
+  ]);
+  assert.equal(first.runId, runs[0].runId);
+  assert.equal(concurrent.runId, first.runId);
+  assert([first, concurrent].every(result => result.reused));
+  assert([first, concurrent].some(result => result.recommendations.created === 0));
+  const where = { forecast: { runId: first.runId } };
+  const count = await db.recommendation.count({ where });
+  assert(count > 0, 'The worker should produce recommendations for demo shortages');
+  const repeated = await runForecastPipeline(db, day, true);
+  assert.equal(repeated.recommendations.created, 0);
+  assert.equal(await db.recommendation.count({ where }), count);
 });

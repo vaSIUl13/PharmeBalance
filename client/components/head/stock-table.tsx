@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { loadPositions } from "@/lib/head/api";
 import {
-  formatDateTime, formatNumber, formatProbability, positionStatus, positionStatuses, riskLevels, toNumber,
+  formatDateTime, formatNumber, formatProbability, positionStatuses, riskLevels, toNumber,
   type PositionStatus,
 } from "@/lib/head/format";
-import type { ForecastItem } from "@/lib/head/types";
+import type { CurrentPosition } from "@/lib/head/types";
 import { useResource } from "@/lib/head/use-resource";
 import { useHeadSession } from "./head-session";
 import { Badge, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "./ui";
@@ -15,28 +15,34 @@ const classes = ["AX", "AY", "AZ", "BX", "BY", "BZ", "CX", "CY", "CZ"];
 
 type Filters = { query: string; status: "all" | PositionStatus; classes: string };
 
-function itemClass(item: ForecastItem): string {
+function itemClass(item: CurrentPosition): string {
   return item.abcClass && item.xyzClass ? item.abcClass + item.xyzClass : "";
 }
 
-function byUrgency(a: ForecastItem, b: ForecastItem): number {
+function byUrgency(a: CurrentPosition, b: CurrentPosition): number {
   const days = (a.risk?.daysToStockout ?? Infinity) - (b.risk?.daysToStockout ?? Infinity);
   return Number.isNaN(days) || days === 0 ? a.stock.drug.name.localeCompare(b.stock.drug.name, "uk") : days;
 }
 
-function matches(item: ForecastItem, filters: Filters): boolean {
+function positionStatus(item: CurrentPosition): PositionStatus {
+  if (item.quantity < item.msl) return "shortage";
+  if (item.quantity > item.maxLevel) return "surplus";
+  return "normal";
+}
+
+function matches(item: CurrentPosition, filters: Filters): boolean {
   const query = filters.query.trim().toLowerCase();
   return (filters.status === "all" || positionStatus(item) === filters.status) &&
     (filters.classes === "all" || itemClass(item) === filters.classes) &&
     (!query || (item.stock.drug.name + " " + item.stock.drug.sku).toLowerCase().includes(query));
 }
 
-function StatusBadge({ item }: { item: ForecastItem }) {
+function StatusBadge({ item }: { item: CurrentPosition }) {
   const status = positionStatuses[positionStatus(item)];
   return <Badge tone={status.tone}>{status.label}</Badge>;
 }
 
-function DaysCell({ item }: { item: ForecastItem }) {
+function DaysCell({ item }: { item: CurrentPosition }) {
   const days = item.risk?.daysToStockout ?? null;
   if (days === null || item.risk?.positionType !== "SHORTAGE") return <span className="text-[#64748b]">—</span>;
   const level = item.risk.riskLevel;
@@ -97,7 +103,7 @@ export function StockTable() {
 
         <ResourceGate resource={positions} errorText="Не вдалося завантажити залишки та ризики.">
           {() => items.length === 0
-            ? <EmptyState title="Немає розрахованих позицій" hint="Залишки з’являться після імпорту даних і формування прогнозу" />
+            ? <EmptyState title="Немає позицій на складі" hint="Залишки з’являться після додавання позицій або імпорту даних" />
             : visible.length === 0
               ? <EmptyState title="Нічого не знайдено" hint="Змініть пошуковий запит або фільтри" />
               : (
@@ -118,7 +124,7 @@ export function StockTable() {
                     </thead>
                     <tbody>
                       {visible.map(item => (
-                        <tr key={item.forecastId} className="border-b border-[#e2e8e5] last:border-0">
+                        <tr key={item.stockId} className="border-b border-[#e2e8e5] last:border-0">
                           <td className="px-4 py-3 tabular-nums text-[#475569]">{item.stock.drug.sku}</td>
                           <td className="px-2 py-3 font-medium">{item.stock.drug.name}</td>
                           <td className="px-2 py-3">{itemClass(item) || "—"}</td>
@@ -136,7 +142,7 @@ export function StockTable() {
 
                   <ul className="divide-y divide-[#e2e8e5] md:hidden">
                     {visible.map(item => (
-                      <li key={item.forecastId} className="space-y-2 px-4 py-3">
+                      <li key={item.stockId} className="space-y-2 px-4 py-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <p className="font-medium">{item.stock.drug.name}</p>
