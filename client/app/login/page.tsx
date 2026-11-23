@@ -8,6 +8,7 @@ import styles from "@/components/auth/auth.module.css";
 import { authRequest } from "@/lib/auth";
 
 const expiredMfa = "Запит MFA завершився. Увійди знову з email і паролем.";
+const enrollmentRequired = "Administrator MFA enrollment required";
 
 export default function Login() {
   const router = useRouter();
@@ -50,7 +51,9 @@ export default function Login() {
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Не вдалося увійти.";
       if (mfa && detail === expiredMfa) setMfa(false);
-      setMessage(detail);
+      setMessage(detail === enrollmentRequired
+        ? "Для цього облікового запису потрібно спочатку налаштувати двофакторну перевірку. Зверніться до суперадміністратора."
+        : detail);
     } finally {
       setBusy(false);
     }

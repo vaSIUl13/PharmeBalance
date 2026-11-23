@@ -12,9 +12,10 @@ async function main() {
   if (args.length && !replace) throw new Error('Expected --replace-test or no option.');
   if (replace) {
     const url = new URL(process.env.DATABASE_URL ?? '');
-    if (url.hostname !== '127.0.0.1' || url.pathname !== '/pharmabalance_catalog_test' ||
-        email !== 'admin.test@example.com') {
-      throw new Error('--replace-test is restricted to the local catalog test administrator.');
+    if (url.hostname !== '127.0.0.1' || url.pathname !== '/pharmabalance_catalog_test') {
+      console.error('--replace-test requires the local pharmabalance_catalog_test database at 127.0.0.1.');
+      process.exitCode = 1;
+      return;
     }
   }
   const db = new PrismaClient();

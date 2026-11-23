@@ -104,7 +104,7 @@ export class RegistrationService {
     const pharmacyId = approved && body && typeof body === 'object' && 'pharmacyId' in body
       ? parseAccess({ pharmacyId: body.pharmacyId }).pharmacyId : undefined;
     try {
-      await this.db.$transaction(async tx => {
+      const recipient = await this.db.$transaction(async tx => {
         await lockUser(tx, actor.userId);
         const reviewer = await tx.userAccount.findFirst({
           where: { userId: actor.userId, isActive: true,
@@ -133,7 +133,18 @@ export class RegistrationService {
         await tx.authAuditEvent.create({
           data: { userId: actor.userId, event: approved ? 'REGISTRATION_APPROVED' : 'REGISTRATION_REJECTED' },
         });
+        return { email: request.email, role: request.requestedRole };
       });
+      if (recipient && this.email.enabled) {
+        const subject = approved ? 'PharmaBalance: заявку схвалено' : 'PharmaBalance: заявку відхилено';
+        const text = approved
+          ? recipient.role === 'admin'
+            ? 'Ваш обліковий запис створено. Зверніться до суперадміністратора, щоб налаштувати двофакторну перевірку перед першим входом.'
+            : 'Ваш обліковий запис створено. Увійдіть до PharmaBalance за допомогою пошти й пароля, вказаних під час реєстрації.'
+          : 'Вашу заявку на реєстрацію у PharmaBalance відхилено.';
+        void this.email.sendRegistrationNotice(recipient.email, { subject, text, html: '<p>' + text + '</p>' })
+          .catch(() => this.logger.warn('Registration decision email failed'));
+      }
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw new ConflictException('Login or email already exists');
