@@ -1,5 +1,5 @@
 import { isAdministrativeRole } from '../auth/administrative-role';
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { pharmacyScope } from '../auth/auth-scope';
@@ -21,6 +21,32 @@ export class StocksService {
         stockId: after === undefined ? undefined : { gt: after } },
       take: 100, orderBy: { stockId: 'asc' },
     });
+  }
+
+  async currentPositions(user: Principal, after?: number) {
+    if (user.role !== 'head') throw new ForbiddenException();
+    const synthetic = new URL(process.env.DATABASE_URL!).pathname.endsWith('_demo');
+    const run = await this.db.forecastRun.findFirst({ where: { synthetic },
+      orderBy: [{ asOf: 'desc' }, { id: 'desc' }], select: { id: true, asOf: true } });
+    const pageSize = 100;
+    const rows = await this.db.stockItem.findMany({
+      where: { pharmacy: { AND: [this.scope(user), { isSynthetic: synthetic }] }, stockId: { gt: after } },
+      orderBy: { stockId: 'asc' }, take: pageSize + 1,
+      select: {
+        stockId: true, quantity: true, msl: true, maxLevel: true, pharmacyId: true,
+        drug: { select: { sku: true, name: true } },
+        forecastRows: { where: { runId: run?.id ?? -1 }, take: 1, select: {
+          abcClass: true, xyzClass: true, shortageProbability: true, predictedDemand: true, risk: true,
+        } },
+      },
+    });
+    const items = rows.slice(0, pageSize).map(({ forecastRows: [forecast], pharmacyId, drug, ...stock }) => ({
+      ...stock, stock: { pharmacyId, drug },
+      abcClass: forecast?.abcClass ?? null, xyzClass: forecast?.xyzClass ?? null,
+      shortageProbability: forecast?.shortageProbability ?? null, predictedDemand: forecast?.predictedDemand ?? null,
+      risk: forecast?.risk ?? null,
+    }));
+    return { asOf: run?.asOf ?? null, items, next: rows.length > pageSize ? items.at(-1)!.stockId : null };
   }
 
   async create(user: Principal, input: CreateStockDto) {

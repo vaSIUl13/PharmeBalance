@@ -4,6 +4,10 @@ import { CreateStockDto, StockThresholdsDto } from '../../modules/stocks/dto/sto
 
 export const stocksDocs = {
   controller: ApiTags('stocks'),
+  current: applyDecorators(
+    ApiQuery({ name: 'after', required: false, type: Number, description: 'Last stockId of the preceding page' }),
+    ApiOperation({ summary: 'Read current inventory and latest forecast for the pharmacy assigned to the head' }),
+  ),
   list: applyDecorators(
     ApiQuery({ name: 'sku', required: false, type: String }),
     ApiQuery({ name: 'pharmacyId', required: false, type: Number }),

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { loadImports, loadPositions, loadTransfers } from "@/lib/head/api";
 import { formatDateTime, formatNumber, importStatuses, toNumber } from "@/lib/head/format";
-import type { ForecastItem, TransferDetail } from "@/lib/head/types";
+import type { CurrentPosition, TransferDetail } from "@/lib/head/types";
 import { useResource } from "@/lib/head/use-resource";
 import { useHeadSession } from "./head-session";
 import { Icon } from "@/components/ui/icon";
@@ -57,7 +57,7 @@ function daysLabel(days: number | null): string {
   return days < 1 ? "<1 дн." : days + " дн.";
 }
 
-function nearestToStockout(items: ForecastItem[]): ForecastItem[] {
+function nearestToStockout(items: CurrentPosition[]): CurrentPosition[] {
   return items
     .filter(item => item.risk?.positionType === "SHORTAGE")
     .sort((a, b) => (a.risk?.daysToStockout ?? Infinity) - (b.risk?.daysToStockout ?? Infinity))
@@ -158,7 +158,7 @@ export function HeadDashboard() {
                   const days = item.risk?.daysToStockout ?? null;
                   const urgent = days !== null && days < urgentDays;
                   return (
-                    <li key={item.forecastId} className="grid grid-cols-[1fr_96px_56px] items-center gap-3 sm:grid-cols-[1fr_180px_64px]">
+                    <li key={item.stockId} className="grid grid-cols-[1fr_96px_56px] items-center gap-3 sm:grid-cols-[1fr_180px_64px]">
                       <div className="min-w-0">
                         <p className="truncate font-medium">{item.stock.drug.name}</p>
                         <p className="text-xs tabular-nums text-[#64748b]">{formatNumber(item.quantity)} / MSL {formatNumber(item.msl)}</p>

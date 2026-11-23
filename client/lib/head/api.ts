@@ -1,10 +1,9 @@
 import { apiRequest, apiUpload, authRequest } from "@/lib/auth";
 import type {
-  CursorPage, ForecastItem, ForecastPage, ImportBatch, ImportDetail, ImportKind, Pharmacy, Principal,
+  CurrentPosition, CursorPage, ImportBatch, ImportDetail, ImportKind, Pharmacy, Principal,
   Transfer, TransferDetail, TransferResult,
 } from "./types";
 
-const forecastPageLimit = 20;
 const transferPageSize = 100;
 
 export type HeadSession = { principal: Principal; pharmacy: Pharmacy | null };
@@ -16,17 +15,17 @@ export async function loadSession(): Promise<HeadSession> {
   return { principal, pharmacy };
 }
 
-export async function loadPositions(): Promise<{ asOf: string | null; items: ForecastItem[] }> {
-  const items: ForecastItem[] = [];
+export async function loadPositions(): Promise<{ asOf: string | null; items: CurrentPosition[] }> {
+  const items: CurrentPosition[] = [];
   let asOf: string | null = null;
   let after: number | null = null;
-  for (let page = 0; page < forecastPageLimit; page += 1) {
-    const result: ForecastPage = await apiRequest<ForecastPage>("forecasts" + (after === null ? "" : "?after=" + after));
-    asOf = result.run?.asOf ?? null;
+  do {
+    const result: CursorPage<CurrentPosition> & { asOf: string | null } =
+      await apiRequest("stocks/current" + (after === null ? "" : "?after=" + after));
+    asOf = result.asOf;
     items.push(...result.items);
-    if (result.next === null) break;
     after = result.next;
-  }
+  } while (after !== null);
   return { asOf, items };
 }
 
