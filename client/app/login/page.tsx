@@ -34,8 +34,13 @@ export default function Login() {
         }
       }
       const next = new URLSearchParams(window.location.search).get("next");
-      const destination = next?.split("?")[0] === "/admin/registration-requests" ? next : "/account";
-      router.replace(destination ?? "/account");
+      if (next?.split("?")[0] === "/admin/registration-requests") {
+        router.replace(next);
+        return;
+      }
+      const user = await authRequest<{ role: string }>("me").catch(() => null);
+      const homes: Record<string, string> = { head: "/head/dashboard", logist: "/logist/queue" };
+      router.replace(homes[user?.role ?? ""] ?? "/account");
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Не вдалося увійти.";
       if (mfa && detail === expiredMfa) setMfa(false);

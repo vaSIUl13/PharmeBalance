@@ -21,6 +21,21 @@ export async function apiRequest<T>(path: string, method = "GET", body?: object)
   return (payload ? JSON.parse(payload) : undefined) as T;
 }
 
+export async function apiUpload<T>(path: string, body: FormData, acceptedStatuses: number[] = []): Promise<T> {
+  const response = await fetch("/api/v1/" + path, {
+    method: "POST",
+    cache: "no-store",
+    credentials: "same-origin",
+    headers: { "X-Pharme-CSRF": "1" },
+    body,
+  });
+  if (!response.ok && !acceptedStatuses.includes(response.status)) {
+    const error = await response.json().catch(() => null) as { message?: string } | null;
+    throw new ApiError(response.status, error?.message ?? "The request could not be completed.");
+  }
+  return await response.json() as T;
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, message: string) {
     super(message);
