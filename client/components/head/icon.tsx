@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
 export type IconName =
-  | "alert" | "check" | "clock" | "box" | "grid" | "logout" | "refresh" | "truck" | "upload" | "user" | "x";
+  | "alert" | "check" | "clock" | "box" | "file" | "grid" | "logout" | "pin" | "refresh" | "truck" | "upload" | "user" | "users" | "x";
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {
   const mask = "url(/assets/icons/" + name + ".svg)";
