@@ -22,6 +22,13 @@ export const reportsDocs = {
     ApiOperation({ summary: 'Summarize stock risks and redistribution for a calendar period' }),
     reportQuery(),
   ),
+  timeline: applyDecorators(
+    ApiOkResponse({ schema: { example: { period: { from: '2026-11-01', to: '2026-11-02', timeZone: 'Europe/Kyiv' },
+        pharmacyId: null, points: [{ day: '2026-11-01', shortageRisks: 15, surplusPositions: 4, recommendations: 3,
+          confirmed: 2, dispatched: 2, completed: 1, movedUnits: 12 }] } } }),
+    ApiOperation({ summary: 'Daily series of stock risks and redistribution actions for a calendar period' }),
+    reportQuery(),
+  ),
   export: applyDecorators(
     ApiOkResponse({ schema: { type: 'string', format: 'binary' } }),
     ApiOperation({ summary: 'Download the same summary as UTF-8 CSV or XLSX' }),

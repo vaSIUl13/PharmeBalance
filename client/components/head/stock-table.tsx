@@ -8,7 +8,9 @@ import {
 } from "@/lib/head/format";
 import type { CurrentPosition } from "@/lib/head/types";
 import { useResource } from "@/lib/head/use-resource";
+import { Icon } from "@/components/ui/icon";
 import { useHeadSession } from "./head-session";
+import { PositionDialog } from "./position-dialog";
 import { Badge, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "./ui";
 
 const classes = ["AX", "AY", "AZ", "BX", "BY", "BZ", "CX", "CY", "CZ"];
@@ -53,6 +55,7 @@ export function StockTable() {
   const { pharmacy } = useHeadSession();
   const positions = useResource(loadPositions);
   const [filters, setFilters] = useState<Filters>({ query: "", status: "all", classes: "all" });
+  const [selected, setSelected] = useState<CurrentPosition | null>(null);
 
   const items = positions.data?.items ?? [];
   const count = (status: PositionStatus) => items.filter(item => positionStatus(item) === status).length;
@@ -119,7 +122,8 @@ export function StockTable() {
                         <th scope="col" className="px-2 py-2 text-right font-medium">Попит, 14 дн.</th>
                         <th scope="col" className="px-2 py-2 text-right font-medium">Ймовірність дефіциту</th>
                         <th scope="col" className="px-2 py-2 font-medium">До вичерпання</th>
-                        <th scope="col" className="px-4 py-2 font-medium">Статус</th>
+                        <th scope="col" className="px-2 py-2 font-medium">Статус</th>
+                        <th scope="col" className="px-4 py-2 text-right font-medium"><span className="sr-only">Динаміка</span></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -134,7 +138,11 @@ export function StockTable() {
                           <td className="px-2 py-3 text-right tabular-nums">{formatNumber(toNumber(item.predictedDemand))}</td>
                           <td className="px-2 py-3 text-right tabular-nums">{formatProbability(item.shortageProbability)}</td>
                           <td className="px-2 py-3"><DaysCell item={item} /></td>
-                          <td className="px-4 py-3"><StatusBadge item={item} /></td>
+                          <td className="px-2 py-3"><StatusBadge item={item} /></td>
+                          <td className="px-4 py-3 text-right">
+                            <button type="button" aria-label={"Динаміка: " + item.stock.drug.name} onClick={() => setSelected(item)}
+                              className="grid size-8 place-items-center rounded-md border border-[#e2e8e5] text-[#0f766e] hover:bg-[#f8faf9]"><Icon name="chart" size={14} /></button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -155,6 +163,8 @@ export function StockTable() {
                           <div><dt className="text-[#64748b]">MSL / Max</dt><dd className="tabular-nums">{formatNumber(item.msl)} / {formatNumber(item.maxLevel)}</dd></div>
                           <div><dt className="text-[#64748b]">До вичерпання</dt><dd><DaysCell item={item} /></dd></div>
                         </dl>
+                        <button type="button" onClick={() => setSelected(item)}
+                          className="inline-flex min-h-9 items-center gap-2 text-sm text-[#0f766e] underline"><Icon name="chart" size={14} />Динаміка продажів</button>
                       </li>
                     ))}
                   </ul>
@@ -163,6 +173,7 @@ export function StockTable() {
               )}
         </ResourceGate>
       </Card>
+      {selected && <PositionDialog item={selected} status={positionStatus(selected)} onClose={() => setSelected(null)} />}
     </>
   );
 }

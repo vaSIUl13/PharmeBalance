@@ -8,6 +8,11 @@ export const stocksDocs = {
     ApiQuery({ name: 'after', required: false, type: Number, description: 'Last stockId of the preceding page' }),
     ApiOperation({ summary: 'Read current inventory and latest forecast for the pharmacy assigned to the head' }),
   ),
+  salesDaily: applyDecorators(
+    ApiQuery({ name: 'days', required: false, type: Number, description: '1..120, default 30' }),
+    ApiQuery({ name: 'stockId', required: false, type: Number, description: 'Limit to one stock item of the head pharmacy' }),
+    ApiOperation({ summary: 'Daily net sales (sold minus returned) of the head pharmacy ending at the latest sales date' }),
+  ),
   list: applyDecorators(
     ApiQuery({ name: 'sku', required: false, type: String }),
     ApiQuery({ name: 'pharmacyId', required: false, type: Number }),

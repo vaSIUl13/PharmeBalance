@@ -19,6 +19,14 @@ function coordinate(input: unknown, key: string, max: number) {
   return input.toFixed(6);
 }
 
+function bound(input: string | undefined, key: string, max: number) {
+  const value = Number(input);
+  if (input === undefined || !/^-?\d{1,3}(\.\d{1,8})?$/.test(input) || !Number.isFinite(value) || Math.abs(value) > max) {
+    throw new BadRequestException('Invalid ' + key);
+  }
+  return value;
+}
+
 @pharmaciesDocs.controller
 @Controller('pharmacies')
 export class PharmaciesController {
@@ -41,6 +49,21 @@ export class PharmaciesController {
           Number(after) > 2147483647)) ||
         (complete !== undefined && complete !== 'true')) throw new BadRequestException('Invalid search parameters');
     return this.pharmacies.external(query?.trim(), after === undefined ? undefined : Number(after), complete === 'true');
+  }
+
+  @pharmaciesDocs.externalMap
+  @Get('external/map')
+  @Permissions('REFERENCE_EDIT')
+  @Header('Cache-Control', 'no-store')
+  externalMap(@Query('south') south?: string, @Query('west') west?: string,
+    @Query('north') north?: string, @Query('east') east?: string, @Query('limit') limit?: string) {
+    const box = { south: bound(south, 'south', 90), west: bound(west, 'west', 180),
+      north: bound(north, 'north', 90), east: bound(east, 'east', 180) };
+    if (box.south >= box.north || box.west >= box.east) throw new BadRequestException('Invalid bounding box');
+    if (limit !== undefined && !/^\d{1,4}$/.test(limit)) throw new BadRequestException('Invalid limit');
+    const count = limit === undefined ? 500 : Number(limit);
+    if (count < 1 || count > 1000) throw new BadRequestException('Invalid limit');
+    return this.pharmacies.externalMap(box, count);
   }
 
   @pharmaciesDocs.detail

@@ -15,11 +15,17 @@ export class UsersService {
 
   constructor(private readonly db: PrismaService, private readonly email: EmailService) {}
 
-  roles() {
-    return this.db.role.findMany({
+  async roles() {
+    const rows = await this.db.role.findMany({
       where: { code: { not: 'superadmin' } },
-      select: { code: true, name: true, dataScope: true }, orderBy: { code: 'asc' },
+      select: { code: true, name: true, dataScope: true,
+        rolePermissionRows: { select: { permission: { select: { code: true, name: true } } } } },
+      orderBy: { code: 'asc' },
     });
+    return rows.map(({ rolePermissionRows, ...role }) => ({
+      ...role,
+      permissions: rolePermissionRows.map(row => row.permission).sort((a, b) => a.code.localeCompare(b.code)),
+    }));
   }
 
   async list(after?: number) {

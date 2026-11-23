@@ -1,6 +1,6 @@
 import { apiRequest, authRequest } from "@/lib/auth";
 import type { ForecastPage, Pharmacy, Principal, TransferResult } from "@/lib/head/types";
-import type { AuditPage, DecisionCommand, ForecastView, ReportSummary } from "./types";
+import type { AuditPage, DecisionCommand, ForecastView, ReportSummary, ReportTimeline } from "./types";
 
 const pharmacyPageLimit = 40;
 
@@ -8,11 +8,11 @@ export function loadPrincipal(): Promise<Principal> {
   return authRequest<Principal>("me");
 }
 
-export async function loadPharmacies(): Promise<Pharmacy[]> {
-  const items: Pharmacy[] = [];
+export async function loadPharmacies(): Promise<(Pharmacy & { latitude: string; longitude: string })[]> {
+  const items: (Pharmacy & { latitude: string; longitude: string })[] = [];
   let after: number | null = null;
   for (let page = 0; page < pharmacyPageLimit; page += 1) {
-    const result: { items: Pharmacy[]; next: number | null } = await apiRequest<{ items: Pharmacy[]; next: number | null }>(
+    const result: { items: typeof items; next: number | null } = await apiRequest<{ items: typeof items; next: number | null }>(
       "pharmacies" + (after === null ? "" : "?after=" + after));
     items.push(...result.items);
     if (result.next === null) break;
@@ -33,6 +33,12 @@ export function loadSummary(from: string, to: string, pharmacyId?: number): Prom
   const query = new URLSearchParams({ from, to });
   if (pharmacyId !== undefined) query.set("pharmacyId", String(pharmacyId));
   return apiRequest<ReportSummary>("reports/summary?" + query.toString());
+}
+
+export function loadTimeline(from: string, to: string, pharmacyId?: number): Promise<ReportTimeline> {
+  const query = new URLSearchParams({ from, to });
+  if (pharmacyId !== undefined) query.set("pharmacyId", String(pharmacyId));
+  return apiRequest<ReportTimeline>("reports/timeline?" + query.toString());
 }
 
 export function exportUrl(from: string, to: string, format: "csv" | "xlsx", pharmacyId?: number): string {

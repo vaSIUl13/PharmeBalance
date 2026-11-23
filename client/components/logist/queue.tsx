@@ -7,7 +7,8 @@ import { useResource } from "@/lib/head/use-resource";
 import { byQueueOrder, distance, formatKm } from "@/lib/logist/format";
 import type { TransferDetail } from "@/lib/head/types";
 import { Icon } from "@/components/ui/icon";
-import { buttonClasses, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
+import { buttonClasses, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ProgressBar, ResourceGate } from "@/components/head/ui";
+import { DonutChart } from "@/components/manager/charts";
 import { DispatchDialog } from "./dispatch-dialog";
 import { DrugLine, RouteStops, TripStatus } from "./trip-parts";
 
@@ -36,6 +37,12 @@ export function Queue() {
   const count = (status: TransferDetail["status"]) => items.filter(trip => trip.status === status).length;
   const pending = items.filter(trip => trip.status === "CONFIRMED" || trip.status === "IN_PROGRESS");
   const queuedKm = pending.reduce((sum, trip) => sum + (distance(trip) ?? 0), 0);
+  const kmByDonor = new Map<string, number>();
+  for (const trip of pending) {
+    const name = trip.donorStock.pharmacy.name;
+    kmByDonor.set(name, (kmByDonor.get(name) ?? 0) + (distance(trip) ?? 0));
+  }
+  const byDonor = [...kmByDonor].sort((a, b) => b[1] - a[1]).slice(0, 8);
   const donors = [...new Map(items.map(trip => [trip.donorStock.pharmacy.pharmacyId, trip.donorStock.pharmacy.name] as const)).entries()];
   const visible = items
     .filter(trip => matchesFilter(trip, filter) && (donor === "all" || String(trip.donorStock.pharmacy.pharmacyId) === donor))
@@ -58,6 +65,33 @@ export function Queue() {
         <Kpi label="Завершено" icon="check" tone="success" value={trips.data ? count("COMPLETED") : "…"} />
         <Kpi label="Км у черзі" icon="box" value={trips.data ? formatKm(queuedKm) : "…"} note="сумарна відстань активних рейсів" />
       </div>
+
+      {trips.data && items.length > 0 && (
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card title="Рейси за статусами">
+            <div className="p-4">
+              <DonutChart label="Розподіл рейсів за статусами" centre="рейсів" slices={[
+                { label: "Очікують відправлення", value: count("CONFIRMED"), color: "#2563eb" },
+                { label: "В дорозі", value: count("IN_PROGRESS"), color: "#d97706" },
+                { label: "Завершено", value: count("COMPLETED"), color: "#0f766e" },
+                { label: "Скасовано", value: count("CANCELLED"), color: "#94a3b8" },
+              ]} />
+            </div>
+          </Card>
+          <Card title="Навантаження за донорами" note="км активних рейсів">
+            <ul className="space-y-3 p-4">
+              {byDonor.length === 0
+                ? <li className="text-sm text-[#64748b]">Активних рейсів немає</li>
+                : byDonor.map(([name, km]) => (
+                  <li key={name}>
+                    <div className="mb-1 flex justify-between gap-3 text-sm"><span className="truncate">{name}</span><b className="tabular-nums">{formatKm(km)}</b></div>
+                    <ProgressBar value={(km / Math.max(byDonor[0][1], 1)) * 100} tone="success" />
+                  </li>
+                ))}
+            </ul>
+          </Card>
+        </div>
+      )}
 
       <Card>
         <form className="flex flex-wrap items-end gap-3 border-b border-[#e2e8e5] p-4" onSubmit={event => event.preventDefault()}>

@@ -3,14 +3,52 @@
 import { useCallback, useState, type FormEvent } from "react";
 import { useResource } from "@/lib/head/use-resource";
 import { formatNumber } from "@/lib/head/format";
-import { exportUrl, loadPharmacies, loadSummary } from "@/lib/manager/api";
+import { exportUrl, loadPharmacies, loadSummary, loadTimeline } from "@/lib/manager/api";
 import { isoDay } from "@/lib/manager/format";
 import { Icon } from "@/components/ui/icon";
 import { buttonClasses, Card, inputClasses, Kpi, Notice, PageHeader, ProgressBar, ResourceGate } from "@/components/head/ui";
+import { BarChart, LineChart } from "./charts";
 
 type Range = { from: string; to: string; pharmacyId?: number };
 
 const presets = [{ days: 7, label: "7 днів" }, { days: 30, label: "30 днів" }, { days: 90, label: "90 днів" }];
+
+function dayLabel(day: string) {
+  return day.slice(8, 10) + "." + day.slice(5, 7);
+}
+
+function Timeline({ range }: { range: Range }) {
+  const load = useCallback(() => loadTimeline(range.from, range.to, range.pharmacyId), [range]);
+  const timeline = useResource(load);
+  return (
+    <ResourceGate resource={timeline} errorText="Не вдалося завантажити динаміку.">
+      {({ points }) => {
+        const labels = points.map(point => dayLabel(point.day));
+        return (
+          <div className="space-y-4 border-t border-[#e2e8e5] p-4">
+            <div>
+              <h2 className="mb-1 text-base font-semibold">Ризики та надлишки за днями</h2>
+              <LineChart label="Позиції з ризиком дефіциту та надлишком за днями" labels={labels} series={[
+                { name: "Ризик дефіциту", color: "#b91c1c", values: points.map(point => point.shortageRisks) },
+                { name: "Надлишок", color: "#0369a1", values: points.map(point => point.surplusPositions) },
+              ]} />
+            </div>
+            <div>
+              <h2 className="mb-1 text-base font-semibold">Переміщено одиниць за днями</h2>
+              <BarChart label="Переміщені одиниці за днями" labels={labels}
+                series={{ name: "Переміщено", color: "#0f766e", values: points.map(point => point.movedUnits) }} />
+            </div>
+            <div>
+              <h2 className="mb-1 text-base font-semibold">Завершені рейси за днями</h2>
+              <BarChart label="Завершені рейси за днями" labels={labels} height={160}
+                series={{ name: "Завершено", color: "#2563eb", values: points.map(point => point.completed) }} />
+            </div>
+          </div>
+        );
+      }}
+    </ResourceGate>
+  );
+}
 
 function Summary({ range }: { range: Range }) {
   const load = useCallback(() => loadSummary(range.from, range.to, range.pharmacyId), [range]);
@@ -41,6 +79,7 @@ function Summary({ range }: { range: Range }) {
                 </div>
               ))}
             </div>
+            <Timeline range={range} />
             <div className="flex flex-wrap gap-2 border-t border-[#e2e8e5] p-4">
               <a className={buttonClasses.secondary} href={exportUrl(range.from, range.to, "csv", range.pharmacyId)} download>
                 <Icon name="file" size={14} />Експорт CSV

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { stocksDocs } from '../../swagger/path/stocks';
 import { optionalQueryId } from '../../common/query-id';
 import { type AuthRequest, Permissions } from '../auth/auth.guard';
@@ -24,6 +24,17 @@ export class StocksController {
   @Header('Cache-Control', 'no-store')
   current(@Req() req: AuthRequest, @Query('after') after?: string) {
     return this.stocks.currentPositions(req.principal!, optionalQueryId(after, 'after'));
+  }
+
+  @stocksDocs.salesDaily
+  @Get('sales/daily')
+  @Permissions('PHARMACY_VIEW')
+  @Header('Cache-Control', 'no-store')
+  salesDaily(@Req() req: AuthRequest, @Query('days') days?: string, @Query('stockId') stockId?: string) {
+    if (days !== undefined && !/^\d{1,3}$/.test(days)) throw new BadRequestException('Invalid days');
+    const count = days === undefined ? 30 : Number(days);
+    if (count < 1 || count > 120) throw new BadRequestException('Invalid days');
+    return this.stocks.dailySales(req.principal!, count, optionalQueryId(stockId, 'stockId'));
   }
 
   @stocksDocs.create

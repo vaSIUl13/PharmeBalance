@@ -26,6 +26,28 @@ export type ExternalPharmacy = {
   pharmacyId: number | null;
 };
 
+export type ExternalMapPage = { items: Omit<ExternalPharmacy, "source">[]; truncated: boolean };
+
+export type RoleInfo = {
+  code: RoleCode;
+  name: string;
+  dataScope: "NETWORK" | "ASSIGNED_PHARMACIES";
+  permissions: { code: string; name: string }[];
+};
+
+export type Drug = {
+  drugId: number;
+  sku: string;
+  name: string;
+  dosageForm: string;
+  strength: string | null;
+  unit: string;
+  isActive: boolean;
+  registration: { number: string; inn: string | null; atcCodes: string[] } | null;
+};
+
+export type DrugPage = { items: Drug[]; next: number | null };
+
 export type CreatePharmacyInput = {
   code?: string;
   name: string;

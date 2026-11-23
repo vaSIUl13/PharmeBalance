@@ -46,6 +46,19 @@ export class PharmaciesService {
     return { items, next: rows.length > 50 ? items[49].id : null };
   }
 
+  async externalMap(box: { south: number; west: number; north: number; east: number }, limit: number) {
+    const rows = await this.db.externalPharmacy.findMany({
+      where: {
+        name: { not: null },
+        latitude: { gte: box.south, lte: box.north },
+        longitude: { gte: box.west, lte: box.east },
+      },
+      select: { id: true, name: true, city: true, address: true, latitude: true, longitude: true, pharmacyId: true },
+      orderBy: { id: 'asc' }, take: limit + 1,
+    });
+    return { items: rows.slice(0, limit), truncated: rows.length > limit };
+  }
+
   async create(data: Pick<Prisma.PharmacyCreateInput, 'code' | 'name' | 'city' | 'address' | 'latitude' | 'longitude'>,
     externalIds: number[], actor: number) {
     try {

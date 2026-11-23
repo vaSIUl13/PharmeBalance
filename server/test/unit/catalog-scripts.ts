@@ -27,9 +27,9 @@ type SourceFactory = {
   (source: 'drlz', options: { mode: 'incremental' }): Promise<{
     start(since: string): { url: string };
   }>;
-  (source: 'osm', options: { ukraine: true; 'overpass-url': string },
+  (source: 'osm', options: { ukraine: true; 'overpass-url': string; 'save-snapshot'?: string },
     requestFactory: () => (url: string, options: { body: URLSearchParams }) => Promise<{ body: unknown }>,
-  ): Promise<{ scope: string; page(): Promise<{ records: PharmacyRecord[] }> }>;
+  ): Promise<{ scope: string; page(): Promise<{ records: PharmacyRecord[] }>; saveSnapshot(): Promise<void> }>;
 };
 
 export const { makeSource }: { makeSource: SourceFactory } = require(resolve(catalog, 'sync.cjs'));

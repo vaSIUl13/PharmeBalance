@@ -4,6 +4,7 @@ import { useState } from "react";
 import { loadPharmacies } from "@/lib/admin/api";
 import { useResource } from "@/lib/head/use-resource";
 import { Badge, buttonClasses, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
+import { NetworkMap } from "./network-map";
 import { PharmacyDialog } from "./pharmacy-dialog";
 
 export function Pharmacies() {
@@ -28,6 +29,12 @@ export function Pharmacies() {
         <Kpi label="Неактивні" icon="alert" tone="warning" value={pharmacies.data ? items.filter(item => !item.isActive).length : "…"} />
       </div>
       <Notice tone="neutral">Аптека стає активною після призначення завідувача в розділі «Користувачі».</Notice>
+
+      {pharmacies.data && (
+        <Card title="Карта аптек" note="Аптеки мережі та довідник України з OpenStreetMap">
+          <div className="p-4"><NetworkMap pharmacies={items} /></div>
+        </Card>
+      )}
 
       <Card>
         <form className="border-b border-[#e2e8e5] p-4" role="search" onSubmit={event => event.preventDefault()}>

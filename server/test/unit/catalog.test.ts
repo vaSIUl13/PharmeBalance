@@ -1,17 +1,30 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { parseDrlz, parseOverpass, parsePharmacyCsv, packageKey, drlzUrl, createHttpClient, makeSource, PROFILES, simulate } from './catalog-scripts';
 
-test('nationwide OSM sync uses the Ukraine area and reads pharmacy results', async () => {
+test('nationwide OSM sync saves a validated snapshot and leaves existing files intact', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'pharma-osm-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const snapshot = join(dir, 'pharmacies.json');
   const provider = 'https://example.invalid/api/interpreter';
-  const adapter = await makeSource('osm', { ukraine: true, 'overpass-url': provider }, () => async (url, request) => {
+  const body = { elements: [{ type: 'node', id: 1, lat: 50, lon: 30, tags: { amenity: 'pharmacy', name: 'Pharmacy' } }] };
+  const options = { ukraine: true, 'overpass-url': provider, 'save-snapshot': snapshot } as const;
+  const adapter = await makeSource('osm', options, () => async (url, request) => {
     assert.equal(url, provider);
     assert.match(request.body.get('data') ?? '', /ISO3166-1"="UA"[\s\S]+nwr\["amenity"="pharmacy"\]\(area\.ua\)/);
-    return { body: { elements: [{ type: 'node', id: 1, lat: 50, lon: 30, tags: { amenity: 'pharmacy', name: 'Pharmacy' } }] } };
+    return { body };
   });
   assert.equal(adapter.scope, provider + '|UA');
   assert.equal((await adapter.page()).records[0].externalId, 'node:1');
+  await adapter.saveSnapshot();
+  assert.deepEqual(JSON.parse(await readFile(snapshot, 'utf8')), body);
+  const repeated = await makeSource('osm', options, () => async () => ({ body }));
+  await repeated.page();
+  await assert.rejects(repeated.saveSnapshot(), { code: 'EEXIST' });
 });
 
 test('registry preserves multiple packages and manufacturer roles', () => {
