@@ -1,5 +1,9 @@
 export async function authRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
-  const response = await fetch("/api/v1/auth/" + path, {
+  return apiRequest<T>("auth/" + path, method, body);
+}
+
+export async function apiRequest<T>(path: string, method = "GET", body?: object): Promise<T> {
+  const response = await fetch("/api/v1/" + path, {
     method,
     cache: "no-store",
     credentials: "same-origin",
@@ -11,7 +15,14 @@ export async function authRequest<T>(path: string, method = "GET", body?: object
   });
   if (!response.ok) {
     const error = await response.json().catch(() => null) as { message?: string } | null;
-    throw new Error(error?.message ?? "The request could not be completed.");
+    throw new ApiError(response.status, error?.message ?? "The request could not be completed.");
   }
-  return (response.status === 204 ? undefined : await response.json()) as T;
+  const payload = await response.text();
+  return (payload ? JSON.parse(payload) : undefined) as T;
+}
+
+export class ApiError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+  }
 }

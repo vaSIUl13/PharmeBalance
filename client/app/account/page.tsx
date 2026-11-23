@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { authRequest } from "../../lib/auth";
+import { authRequest } from "@/lib/auth";
 
 type Session = { id: string; device: string; lastSeenAt: string; current: boolean };
 

@@ -11,6 +11,6 @@ import { AuthService } from './auth.service';
   imports: [DatabaseModule],
   controllers: [AuthController],
   providers: [AuthService, AuthRedisService, { provide: APP_GUARD, useClass: AuthGuard }],
-  exports: [AuthService],
+  exports: [AuthService, AuthRedisService],
 })
 export class AuthModule {}

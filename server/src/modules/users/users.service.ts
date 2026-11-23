@@ -33,19 +33,27 @@ export class UsersService {
   }
 
   async create(actor: number, input: CreateUserDto) {
-    const { password, role, pharmacyId, ...profile } = input;
+    const { password, ...profile } = input;
     const passwordHash = await hashPassword(password);
     try {
-      return await this.db.$transaction(async tx => {
-        const user = await tx.userAccount.create({ data: { ...profile, passwordHash, role: { connect: { code: role } } }, select: userFields });
-        await tx.auditLog.create({ data: { userId: actor, targetUserId: user.userId, eventType: 'ACCOUNT_CREATED', details: 'Created account with role ' + role } });
-        await this.assign(tx, actor, user.userId, role, pharmacyId);
-        return user;
-      });
+      return await this.db.$transaction(tx => this.createWithHash(tx, actor, profile, passwordHash));
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Login or email already exists');
       throw error;
     }
+  }
+
+  async createWithHash(tx: Prisma.TransactionClient, actor: number,
+    input: Omit<CreateUserDto, 'password'>, passwordHash: string) {
+    const { role, pharmacyId, ...profile } = input;
+    const user = await tx.userAccount.create({
+      data: { ...profile, passwordHash, role: { connect: { code: role } } }, select: userFields,
+    });
+    await tx.auditLog.create({
+      data: { userId: actor, targetUserId: user.userId, eventType: 'ACCOUNT_CREATED', details: 'Created account with role ' + role },
+    });
+    await this.assign(tx, actor, user.userId, role, pharmacyId);
+    return user;
   }
 
   async update(actor: number, userId: number, access: UserAccessDto) {
