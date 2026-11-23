@@ -24,6 +24,13 @@ export class RecommendationsController {
     return this.recommendations.detail(req.principal!, optionalQueryId(id, 'id')!);
   }
 
+  @recommendationsDocs.route
+  @Get(':id/route')
+  @Header('Cache-Control', 'no-store')
+  route(@Req() req: AuthRequest, @Param('id') id: string) {
+    return this.recommendations.route(req.principal!, optionalQueryId(id, 'id')!);
+  }
+
   @recommendationsDocs.history
   @Get(':id/history')
   @Header('Cache-Control', 'no-store')

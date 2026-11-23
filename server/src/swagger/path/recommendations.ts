@@ -1,5 +1,5 @@
 import { applyDecorators } from '@nestjs/common';
-import { ApiBody, ApiConflictResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConflictResponse, ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { commands } from '../../modules/recommendations/recommendations.service';
 import { TransferInput } from '../../modules/recommendations/transfer-input';
 
@@ -10,6 +10,18 @@ export const recommendationsDocs = {
     ApiQuery({ name: 'after', required: false, type: Number, description: 'Last recommendation ID of the previous page' }),
   ),
   detail: ApiOperation({ summary: 'Recommendation with endpoints, donor distance and uncovered quantity' }),
+  route: applyDecorators(
+    ApiOperation({ summary: 'Get the driving route and estimated time between the pharmacies of a visible transfer' }),
+    ApiNotFoundResponse({ description: 'Transfer does not exist or is outside the caller’s scope' }),
+    ApiOkResponse({ schema: { oneOf: [
+      { type: 'object', required: ['status', 'distanceMeters', 'durationSeconds', 'coordinates'], properties: {
+        status: { type: 'string', enum: ['ready'] }, distanceMeters: { type: 'number' }, durationSeconds: { type: 'number' },
+        coordinates: { type: 'array', items: { type: 'array', minItems: 2, maxItems: 2, items: { type: 'number' } },
+          description: 'LineString positions ordered longitude, latitude' },
+      } },
+      { type: 'object', required: ['status'], properties: { status: { type: 'string', enum: ['no-route', 'unavailable'] } } },
+    ] } }),
+  ),
   history: ApiOperation({ summary: 'List transfer actions, actors, quantities and status transitions' }),
   generate: ApiOperation({ summary: 'Evaluate shortage positions in a forecast run once' }),
   act: applyDecorators(

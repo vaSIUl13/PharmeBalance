@@ -44,8 +44,8 @@ export async function generateRecommendations(tx: Prisma.TransactionClient, runI
     const candidates = (byDrug.get(f.stock.drugId) ?? []).filter(d => d.pharmacyId !== f.stock.pharmacyId).map(d => {
       const saved = cache.get(pair(d.pharmacyId, f.stock.pharmacyId));
       return { stockId: d.stockId, pharmacyId: d.pharmacyId, available: available.get(d.stockId) ?? 0,
-        distance: saved ? Number(saved.distanceKm) : haversine(point(d), point(f.stock)),
-        source: saved?.source ?? Source.HAVERSINE };
+        distance: haversine(point(d), point(f.stock)),
+        roadDistance: saved?.source === Source.OSRM ? Number(saved.distanceKm) : null };
     });
     const quantity = Math.min(limit, need);
     return { f, need, quantity, days, candidates };
@@ -60,9 +60,15 @@ export async function generateRecommendations(tx: Prisma.TransactionClient, runI
         recipients[end].need === recipients[start].need) end++;
     const group = recipients.slice(start, end);
     while (group.length) {
-      const ranked = group.map(r => ({ r, donor: r.quantity ? nearest(r.candidates.map(c => ({
-        ...c, available: available.get(c.stockId) ?? 0,
-      })), r.quantity) : undefined })).sort((a,b) =>
+      const ranked = group.map(r => {
+        const eligible = r.candidates.map(c => ({ ...c, available: available.get(c.stockId) ?? 0 }))
+          .filter(c => c.available >= r.quantity);
+        const useRoad = eligible.every(c => c.roadDistance !== null);
+        const donor = r.quantity ? nearest(eligible.map(c => ({
+          ...c, distance: useRoad ? c.roadDistance : c.distance, source: useRoad ? Source.OSRM : Source.HAVERSINE,
+        })), r.quantity) : undefined;
+        return { r, donor };
+      }).sort((a,b) =>
         compare(a.donor?.distance ?? Infinity, b.donor?.distance ?? Infinity) || a.r.f.stockId - b.r.f.stockId);
       const { r, donor } = ranked[0];
       group.splice(group.indexOf(r), 1);

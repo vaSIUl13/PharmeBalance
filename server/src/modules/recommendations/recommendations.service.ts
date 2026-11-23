@@ -6,6 +6,7 @@ import { transferScope } from '../auth/auth-scope';
 import { lockUser } from '../users/pharmacy-assignments';
 import { activeTransfers, generateRecommendations } from './generate';
 import { transferLimit } from './donor-selection';
+import { roadRoute } from './road-route';
 
 export const commands = ['CONFIRM', 'REJECT', 'CANCEL', 'DISPATCH', 'RECEIVE'] as const;
 export type Command = typeof commands[number];
@@ -16,9 +17,16 @@ const positions = { donorStock: stock, recipientStock: stock } satisfies Prisma.
 export class RecommendationsService {
   constructor(private readonly db: PrismaService) {}
 
-  list(user: Principal, after?: number) {
+  async list(user: Principal, after?: number) {
+    const synthetic = new URL(process.env.DATABASE_URL!).pathname.endsWith('_demo');
+    const latest = await this.db.forecastRun.findFirst({
+      where: { synthetic }, orderBy: [{ asOf: 'desc' }, { id: 'desc' }], select: { id: true },
+    });
     return this.db.recommendation.findMany({
-      where: transferScope(user),
+      where: { AND: [transferScope(user), { OR: [
+        { status: { not: 'CREATED' } },
+        ...(latest ? [{ forecast: { runId: latest.id } }] : []),
+      ] }] },
       ...(after ? { cursor: { recommendationId: after }, skip: 1 } : {}),
       take: 100, orderBy: [{ forecast: { runId: { sort: 'desc', nulls: 'last' } } }, { priority: 'asc' },
         { recommendationId: 'desc' }],
@@ -37,6 +45,13 @@ export class RecommendationsService {
     await this.detail(user, id);
     return this.db.recommendationAction.findMany({ where: { recommendationId: id, recommendation: transferScope(user) },
       include: { actionType: { select: { code: true, fromStatus: true, toStatus: true } } }, orderBy: { actionId: 'asc' } });
+  }
+
+  async route(user: Principal, id: number) {
+    const trip = await this.detail(user, id);
+    const point = ({ latitude, longitude }: typeof trip.donorStock.pharmacy) =>
+      ({ latitude: Number(latitude), longitude: Number(longitude) });
+    return roadRoute(point(trip.donorStock.pharmacy), point(trip.recipientStock.pharmacy));
   }
 
   generate(user: Principal, runId: number) {

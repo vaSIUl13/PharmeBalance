@@ -164,7 +164,8 @@ async function seedDemo(db, profileName, seed, asOf, apply) {
       const expected = new Map(drugs.map((drug) => [drug.sku, drug]));
       stats.newSkus = (await tx.drug.createMany({ data: drugs, skipDuplicates: true })).count;
       const existing = await tx.drug.findMany({ where: { sku: { in: [...expected.keys()] } } });
-      if (existing.some((drug) => drug.name !== expected.get(drug.sku).name || drug.registrationId !== null)) {
+      if (existing.some(drug => drug.unit !== 'pack' || (drug.registrationId === null
+        ? drug.name !== expected.get(drug.sku).name : !drug.registrationPackageKey))) {
         throw new Error('Reserved demo SKU conflicts with existing data');
       }
       const bySku = new Map(existing.map((row) => [row.sku, row.drugId]));

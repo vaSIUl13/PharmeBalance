@@ -1,5 +1,6 @@
 "use client";
 
+import { formatTripDistance } from "@/lib/logist/format";
 import { useState } from "react";
 import { loadTransfers } from "@/lib/head/api";
 import { formatDateTime, formatNumber, transferStatuses } from "@/lib/head/format";
@@ -116,7 +117,7 @@ export function Recommendations() {
                               <td className="px-4 py-3 tabular-nums text-[#475569]">{trip.recommendationId}</td>
                               <td className="px-2 py-3"><p className="font-medium">{trip.donorStock.drug.name}</p>
                                 <p className="text-xs tabular-nums text-[#64748b]">{trip.donorStock.drug.sku}</p></td>
-                              <td className="px-2 py-3">{trip.donorStock.pharmacy.name} → {trip.recipientStock.pharmacy.name}</td>
+                              <td className="px-2 py-3">{trip.donorStock.pharmacy.name} → {trip.recipientStock.pharmacy.name}<p className="text-xs text-[#64748b]">{formatTripDistance(trip)}</p></td>
                               <td className="px-2 py-3 text-right tabular-nums">{formatNumber(trip.quantity)} {trip.donorStock.drug.unit}</td>
                               <td className="px-2 py-3 text-right tabular-nums">{trip.priority}</td>
                               <td className="whitespace-nowrap px-2 py-3 tabular-nums text-[#475569]">{formatDateTime(trip.createdAt)}</td>
