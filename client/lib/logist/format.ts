@@ -21,6 +21,14 @@ export function formatKm(value: number | null): string {
   return value === null ? "—" : value.toLocaleString("uk-UA", { maximumFractionDigits: 1 }) + " км";
 }
 
+export function formatTripDistance(trip: TransferDetail): string {
+  const value = distance(trip);
+  if (value === null) return formatKm(null);
+  const method = trip.distanceSource === "OSRM" ? "дорогою"
+    : trip.distanceSource === "HAVERSINE" ? "по прямій" : undefined;
+  return formatKm(value) + (method ? " · " + method : "");
+}
+
 export function byQueueOrder(a: TransferDetail, b: TransferDetail): number {
   const way = Number(b.status === "IN_PROGRESS") - Number(a.status === "IN_PROGRESS");
   return way || a.priority - b.priority || a.recommendationId - b.recommendationId;

@@ -59,7 +59,7 @@ export function DecisionDialog({ trip, command, onClose, onDone }: {
     } catch (failure) {
       const message = failureText(command, failure);
       setError(message);
-      if (failure instanceof ApiError && failure.status === 409) onDone(message, false);
+      if (failure instanceof ApiError && (failure.status === 409 || failure.status === 404)) onDone(message, false);
     } finally {
       setBusy(false);
     }

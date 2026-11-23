@@ -53,11 +53,12 @@ export type Transfer = {
   status: TransferStatus;
   createdAt: string;
   distanceKm: string | null;
+  distanceSource?: "OSRM" | "OVERPASS" | "HAVERSINE" | null;
 };
 
 export type TransferPosition = {
   stockId: number;
-  pharmacy: Pharmacy;
+  pharmacy: Pharmacy & { latitude: string; longitude: string };
   drug: { sku: string; name: string; dosageForm: string; strength: string | null; unit: string };
 };
 

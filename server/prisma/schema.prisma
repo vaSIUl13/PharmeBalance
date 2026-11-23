@@ -23,6 +23,7 @@ enum RecommendationStatus {
 }
 
 enum Source {
+  OSRM
   OVERPASS @map("Overpass API")
   HAVERSINE @map("гаверсинус")
 }

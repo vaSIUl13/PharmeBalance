@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useCallback, useState } from "react";
 import { ApiError } from "@/lib/auth";
-import { formatDateTime, formatDrug } from "@/lib/head/format";
+import { formatDrug } from "@/lib/head/format";
 import { useResource } from "@/lib/head/use-resource";
-import { distance, formatKm } from "@/lib/logist/format";
 import { loadTransfer } from "@/lib/logist/api";
 import { Icon } from "@/components/ui/icon";
 import { buttonClasses, Card, EmptyState, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
 import { DispatchDialog } from "./dispatch-dialog";
-import { RouteStops, TripStatus } from "./trip-parts";
+import { TripStatus } from "./trip-parts";
+import { TripRoute } from "./trip-route";
 
 export function TransferView({ id }: { id: number }) {
   const load = useCallback(() => loadTransfer(id), [id]);
@@ -42,15 +42,7 @@ export function TransferView({ id }: { id: number }) {
                     subtitle={data.donorStock.pharmacy.name + " → " + data.recipientStock.pharmacy.name}
                     actions={<TripStatus status={data.status} />} />
                   <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-                    <Card title="Маршрут">
-                      <div className="space-y-4 p-4">
-                        <RouteStops trip={data} />
-                        <dl className="grid grid-cols-2 gap-3 text-sm">
-                          <div><dt className="text-xs text-[#64748b]">Відстань</dt><dd className="font-semibold tabular-nums">{formatKm(distance(data))}</dd></div>
-                          <div><dt className="text-xs text-[#64748b]">Створено</dt><dd className="font-semibold tabular-nums">{formatDateTime(data.createdAt)}</dd></div>
-                        </dl>
-                      </div>
-                    </Card>
+                    <TripRoute key={data.recommendationId} trip={data} />
                     <div className="space-y-4">
                       <Card title="Специфікація вантажу">
                         <dl className="space-y-2 p-4 text-sm">
