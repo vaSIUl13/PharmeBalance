@@ -1,8 +1,5 @@
 node_modules/
 dist/
+dist-test/
 docs/
 examples/
-!docs/pharmacy-user-management.md
-
-redistribution.md
-notifications-and-reports.md

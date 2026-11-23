@@ -1,7 +1,7 @@
 import { applyDecorators, BadRequestException, Body, Controller, Get, Header, HttpCode, HttpException,
   Param, Post, Query, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiBody, ApiConsumes, ApiOperation, ApiQuery, ApiTags, ApiUnprocessableEntityResponse } from '@nestjs/swagger';
+import { importsDocs } from '../../swagger/path/imports';
 import type { DataType } from '@prisma/client';
 import { optionalQueryId } from '../../common/query-id';
 import { type AuthRequest, Permissions } from '../auth/auth.guard';
@@ -10,49 +10,43 @@ import { ImportsService } from './imports.service';
 
 type File = { originalname: string; buffer: Buffer };
 
-function importFile(stocks: boolean) {
+function importFile() {
   return applyDecorators(
     HttpCode(200),
     UseInterceptors(FileInterceptor('file', { limits: { fileSize: maxBytes, files: 1, fields: 2, parts: 4, fieldSize: 100 } })),
-    ApiConsumes('multipart/form-data'),
-    ApiBody({ schema: { type: 'object', required: stocks ? ['file', 'pharmacyId', 'snapshotAt'] : ['file', 'pharmacyId'],
-      properties: { file: { type: 'string', format: 'binary', description: 'UTF-8 .csv or .json, up to 1 MiB and 5000 records' },
-        pharmacyId: { type: 'integer', minimum: 1 },
-        ...(stocks ? { snapshotAt: { type: 'string', format: 'date-time', description: 'Observed instant in UTC (Z)' } } : {}) } } }),
-    ApiUnprocessableEntityResponse({ description: 'REJECTED batch with row errors. No inventory or sales changes.' }),
   );
 }
 
-@ApiTags('imports')
+@importsDocs.controller
 @Permissions('DATA_IMPORT')
 @Controller('imports')
 export class ImportsController {
   constructor(private readonly imports: ImportsService) {}
 
+  @importsDocs.history
   @Get()
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: 'Import history of the assigned pharmacy' })
-  @ApiQuery({ name: 'before', required: false, type: Number })
   history(@Req() req: AuthRequest, @Query('before') before?: string) {
     return this.imports.history(req.principal!, optionalQueryId(before, 'before'));
   }
 
+  @importsDocs.detail
   @Get(':id')
   @Header('Cache-Control', 'no-store')
   detail(@Req() req: AuthRequest, @Param('id') id: string) {
     return this.imports.detail(req.principal!, optionalQueryId(id, 'id')!);
   }
 
+  @importsDocs.stocks
   @Post('stocks')
-  @importFile(true)
-  @ApiOperation({ summary: 'Import absolute quantities for listed SKUs', description: 'CSV header: sku,quantity. JSON: [{"sku":"CAT-SAMPLE-0001","quantity":8}].' })
+  @importFile()
   stocks(@Req() req: AuthRequest, @UploadedFile() file: File | undefined, @Body() fields: Record<string, unknown>) {
     return this.submit(req, file, fields, 'STOCKS');
   }
 
+  @importsDocs.sales
   @Post('sales')
-  @importFile(false)
-  @ApiOperation({ summary: 'Import daily sales', description: 'CSV header: sku,date,quantity. JSON: [{"sku":"CAT-SAMPLE-0001","date":"2026-01-30","quantity":2}]. Optional returnedQuantity, unitPrice, stockout, replacesImportId. Set stockout=true for known unavailable stock; omit for unknown availability. Corrections replace the whole daily aggregate and must name its current import ID.' })
+  @importFile()
   sales(@Req() req: AuthRequest, @UploadedFile() file: File | undefined, @Body() fields: Record<string, unknown>) {
     return this.submit(req, file, fields, 'SALES');
   }

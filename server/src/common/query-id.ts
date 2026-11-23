@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, type PipeTransform } from '@nestjs/common';
 
 export function optionalQueryId(value: unknown, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -6,4 +6,12 @@ export function optionalQueryId(value: unknown, name: string): number | undefine
     throw new BadRequestException('Invalid ' + name);
   }
   return Number(value);
+}
+
+export class DatabaseIdPipe implements PipeTransform<string, number> {
+  transform(value: string): number {
+    const id = optionalQueryId(value, 'id');
+    if (id === undefined) throw new BadRequestException('Missing id');
+    return id;
+  }
 }

@@ -1,26 +1,50 @@
-const assert = require('node:assert/strict');
-const { randomBytes } = require('node:crypto');
-const { test } = require('node:test');
-const { PrismaClient } = require('@prisma/client');
-const { synchronize } = require('../scripts/catalog/sync.cjs');
-const { parseDrlz } = require('../scripts/catalog/adapters.cjs');
-const { linkSku } = require('../scripts/catalog/link-sku.cjs');
-const { simulate, persistPharmacy } = require('../scripts/catalog/demo.cjs');
-const { PharmaciesService } = require('../dist/modules/pharmacies/pharmacies.service.js');
+import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
+import { resolve } from 'node:path';
+import { test } from 'node:test';
+import type { Prisma, PrismaClient } from '@prisma/client';
+import { PrismaService } from '../src/database/prisma.service';
+import { PharmaciesService } from '../src/modules/pharmacies/pharmacies.service';
+import { parseDrlz, simulate } from './unit/catalog-scripts';
+
+type SourceAdapter<Row> = {
+  source: string;
+  scope: string;
+  isDrlz: boolean;
+  start(): { offset: number; baselineSince?: string };
+  page(): Promise<{ records: Row[]; removed: string[]; done: boolean; etag?: string; next?: string | null }>;
+  materialize(row: Row): Promise<Row>;
+};
+
+const catalogScripts = resolve(__dirname, '../../scripts/catalog');
+const { synchronize }: {
+  synchronize<Row>(db: PrismaClient, adapter: SourceAdapter<Row>, options: { apply: boolean; resume?: boolean }):
+    Promise<{ created: number; updated: number; unchanged: number; duplicates: number; status: string }>;
+} = require(resolve(catalogScripts, 'sync.cjs'));
+
+const { linkSku }: {
+  linkSku(db: PrismaClient, options: { registration: string; package: string; sku: string; unit: string; apply?: boolean }):
+    Promise<{ status: string }>;
+} = require(resolve(catalogScripts, 'link-sku.cjs'));
+
+const { persistPharmacy }: {
+  persistPharmacy(db: PrismaClient, pharmacy: Prisma.PharmacyCreateInput, pairs: (ReturnType<typeof simulate> & { drug: number })[],
+    ids: number[], key: string, label: string, asOf: Date): Promise<{ stocks: number; sales: number } | null>;
+} = require(resolve(catalogScripts, 'demo.cjs'));
 
 test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
   const url = process.env.CATALOG_TEST_DATABASE_URL;
   assert(url && /_test$/.test(new URL(url).pathname), 'Set CATALOG_TEST_DATABASE_URL to a migrated _test database');
-  const db = new PrismaClient({ datasourceUrl: url });
+  const db = new PrismaService({ datasourceUrl: url });
   const id = randomBytes(5).toString('hex');
   const source = 'T' + id;
   const number = 'XT/' + id.toUpperCase() + '/01';
   const email = id + '@example.invalid';
-  let pharmacyId;
-  let adminId;
-  let demoUploaderId;
-  let demoPharmacyId;
-  let demoDrugId;
+  let pharmacyId: number | undefined;
+  let adminId: number | undefined;
+  let demoUploaderId: number | undefined;
+  let demoPharmacyId: number | undefined;
+  let demoDrugId: number | undefined;
 
   t.after(async () => {
     try {
@@ -51,7 +75,7 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
   };
   const secondRow = { ...pharmacyRow, externalId: 'node:112' };
   const rows = [pharmacyRow, secondRow, { ...secondRow }];
-  function adapter(fail = false) {
+  function adapter(fail = false): SourceAdapter<typeof pharmacyRow> {
     return {
       source, scope: 'fixture', isDrlz: false, start: () => ({ offset: 0 }),
       page: async () => ({ records: rows, removed: [], done: true, etag: '"stable"' }),
@@ -68,7 +92,9 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
     assert.equal(await db.catalogSyncRun.count({ where: { source } }), 0);
     await assert.rejects(synchronize(db, adapter(true), { apply: true }), /simulated source failure/);
     const failed = await db.catalogSyncRun.findFirstOrThrow({ where: { source, status: 'FAILED' } });
+    assert(failed.checkpoint && typeof failed.checkpoint === 'object' && !Array.isArray(failed.checkpoint));
     assert.equal(failed.checkpoint.offset, 1);
+    assert(failed.counters && typeof failed.counters === 'object' && !Array.isArray(failed.counters));
     assert.equal(failed.counters.created, 1);
     const resumed = await synchronize(db, adapter(), { apply: true, resume: true });
     assert.equal(resumed.created, 1);
@@ -113,7 +139,7 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
         { dose: '250 mg', form: 'capsules', primary: 'blister', quantity: '20' },
       ] },
     });
-    const medicine = {
+    const medicine: SourceAdapter<typeof registration> = {
       source: 'D' + id, scope: 'fixture', isDrlz: true, start: () => ({ offset: 0, baselineSince: new Date().toISOString() }),
       page: async () => ({ records: [registration], removed: [], done: true, next: null }),
       materialize: async (row) => row,
@@ -140,7 +166,7 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
     const asOf = new Date('2026-11-20T00:00:00Z');
     const result = simulate(42, 0, 0, 12, asOf);
     const key = 'synthetic:test:' + id;
-    const args = [db, data, [{ drug: 0, ...result }], [drug.drugId], key, '[SYNTHETIC] test', asOf];
+    const args: Parameters<typeof persistPharmacy> = [db, data, [{ drug: 0, ...result }], [drug.drugId], key, '[SYNTHETIC] test', asOf];
     assert.deepEqual(await persistPharmacy(...args), { stocks: 1, sales: 12 });
     const batch = await db.importBatch.findUniqueOrThrow({ where: { syntheticKey: key } });
     demoPharmacyId = batch.pharmacyId;

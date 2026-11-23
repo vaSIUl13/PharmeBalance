@@ -1,0 +1,78 @@
+import type { TestContext } from 'node:test';
+import type { SignedInFixture } from './fixture';
+import assert = require('node:assert/strict');
+
+export async function testAdministration(t: TestContext, context: SignedInFixture) {
+  const { db, run, accounts, managedIds, request, cookie, login, admin, head, password } = context;
+  await t.test('managed resource routes reject IDs outside the database range', async () => {
+    for (const id of ['0', '-1', '2147483648', '99999999999999999']) {
+      assert.equal((await request('/pharmacies/' + id, { cookies: admin })).status, 400);
+      assert.equal((await request('/users/' + id, { cookies: admin, method: 'PATCH', body: { role: 'manager' } })).status, 400);
+      assert.equal((await request('/users/' + id + '/block', { cookies: admin, method: 'POST' })).status, 400);
+    }
+  });
+  await t.test('administrators assign exactly one head, activate and audit a managed pharmacy', async () => {
+    const created = await request('/pharmacies', { method: 'POST', cookies: admin, body: {
+      code: 'M' + run, name: 'Managed', city: 'Test', address: 'Test', latitude: 49, longitude: 24,
+    } });
+    assert.equal(created.status, 201);
+    const { pharmacyId, isActive } = await created.json();
+    managedIds.push(pharmacyId);
+    assert.equal(isActive, false);
+    const body = { login: 'new-' + run, email: run + '@example.invalid', firstName: 'New',
+      lastName: 'Head', password, role: 'manager' };
+    const create = (cookies: string | undefined, data: unknown) => request('/users', { method: 'POST', cookies, body: data });
+    assert.equal((await create(head, body)).status, 403);
+    assert.equal((await create(admin, { ...body, role: 'head' })).status, 400);
+    const user = await create(admin, body);
+    assert.equal(user.status, 201);
+    accounts.newHead = await user.json();
+    assert.equal(accounts.newHead.passwordHash, undefined);
+    assert.equal((await create(admin, body)).status, 409);
+    const session = cookie(await login('newHead'));
+    const assign = (id: number) => request('/users/' + id, { method: 'PATCH', cookies: admin, body: { role: 'head', pharmacyId } });
+    const attempts = await Promise.all([assign(accounts.newHead.userId), assign(accounts.newHead.userId)]);
+    assert.deepEqual(attempts.map(r => r.status), [200, 200]);
+    assert.equal((await assign(accounts.manager.userId)).status, 409);
+    const directory = await request('/users?after=' + (accounts.newHead.userId - 1), { cookies: admin });
+    assert.equal(directory.status, 200);
+    const listed = (await directory.json()).items[0];
+    assert.equal(listed.userId, accounts.newHead.userId);
+    assert.equal(listed.role.code, 'head');
+    assert.deepEqual(listed.pharmacyIds, [pharmacyId]);
+    assert.equal(listed.passwordHash, undefined);
+    const roles = await request('/roles', { cookies: admin });
+    assert.equal(roles.status, 200);
+    assert.deepEqual((await roles.json()).map((role: { code: string }) => role.code), ['admin', 'head', 'logist', 'manager']);
+    for (const route of ['/roles', '/users', '/audit']) {
+      assert.equal((await request(route, { cookies: session })).status, 403);
+    }
+    for (const route of ['/users?after=-1', '/audit?before=oops']) {
+      assert.equal((await request(route, { cookies: admin })).status, 400);
+    }
+    const visible = await (await request('/pharmacies', { cookies: session })).json();
+    assert.deepEqual(visible.items.map((p: { pharmacyId: number; isActive: boolean }) => [p.pharmacyId, p.isActive]), [[pharmacyId, true]]);
+    assert.equal((await request('/pharmacies/' + pharmacyId, { cookies: session })).status, 200);
+    assert.equal((await request('/pharmacies/' + pharmacyId, { cookies: head })).status, 404);
+    const events = await db.auditLog.findMany({ where: { targetUserId: accounts.newHead.userId }, orderBy: { logId: 'asc' } });
+    assert.deepEqual(events.map(e => e.eventType), ['ACCOUNT_CREATED', 'ROLE_CHANGED', 'PHARMACY_ASSIGNED', 'REFERENCE_EDITED']);
+    assert.equal((await request('/users/' + accounts.newHead.userId + '/block', { method: 'POST', cookies: admin })).status, 204);
+    const history = await request('/audit?targetUserId=' + accounts.newHead.userId, { cookies: admin });
+    assert.equal(history.status, 200);
+    const log: { eventType: string; userId: number; targetUserId: number }[] = (await history.json()).items;
+    assert.deepEqual(log.map(row => row.eventType), ['ACCOUNT_BLOCKED', 'REFERENCE_EDITED', 'PHARMACY_ASSIGNED',
+      'REFERENCE_EDITED', 'PHARMACY_ASSIGNED', 'ROLE_CHANGED', 'ACCOUNT_CREATED']);
+    assert(log.every(row => row.userId === accounts.admin.userId && row.targetUserId === accounts.newHead.userId));
+    assert.equal((await db.pharmacy.findUniqueOrThrow({ where: { pharmacyId } })).isActive, false);
+    const candidates = [1, 2].map(i => ({ ...body, role: 'head', pharmacyId,
+      login: 'candidate-' + i + run, email: 'candidate-' + i + run + '@example.invalid' }));
+    const race = await Promise.all(candidates.map(candidate => create(admin, candidate)));
+    for (const [i, response] of race.entries()) {
+      if (response.status === 201) accounts['candidate' + i] = await response.json();
+    }
+    assert.deepEqual(race.map(r => r.status).sort(), [201, 409]);
+    assert.equal(await db.userAccount.count({ where: { login: { in: candidates.map(c => c.login) } } }), 1);
+    assert.equal(await db.userPharmacy.count({ where: { pharmacyId, unassignedAt: null } }), 1);
+    assert.equal((await db.pharmacy.findUniqueOrThrow({ where: { pharmacyId } })).isActive, true);
+  });
+}

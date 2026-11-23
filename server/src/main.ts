@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import { setupSwagger } from './config/swagger';
+import { setupSwagger } from './swagger/setup';
 import { validateAuthConfig } from './modules/auth/auth-config';
 
 async function bootstrap(): Promise<void> {

@@ -1,0 +1,159 @@
+model Drug {
+  registrationId Int? @map("registration_id")
+  registration DrugRegistration? @relation(fields: [registrationId], references: [registrationId], onDelete: Restrict)
+  registrationPackageKey String? @map("registration_package_key")
+  drugId Int @id @default(autoincrement()) @map("drug_id")
+  sku String @db.VarChar(30)
+  name String @db.VarChar(120)
+  dosageForm String @db.VarChar(40) @map("dosage_form")
+  strength String? @db.VarChar(40)
+  unit String @db.VarChar(20)
+  isActive Boolean @default(true) @map("is_active")
+  stockItemRows StockItem[] @relation("fk_stock_item_drug_id")
+
+  @@unique([sku], map: "drug_sku_UNIQUE")
+  @@unique([registrationId, registrationPackageKey])
+  @@map("drug")
+}
+
+model Pharmacy {
+  isSynthetic Boolean @default(false) @map("is_synthetic")
+  externalRecords ExternalPharmacy[]
+  pharmacyId Int @id @default(autoincrement()) @map("pharmacy_id")
+  code String @db.VarChar(20)
+  name String @db.VarChar(100)
+  city String @db.VarChar(60)
+  address String @db.VarChar(150)
+  latitude Decimal @db.Decimal(9,6)
+  longitude Decimal @db.Decimal(9,6)
+  isActive Boolean @default(true) @map("is_active")
+  pharmacyDistanceRowsFromPharmacy PharmacyDistance[] @relation("fk_pharmacy_distance_from_pharmacy_id")
+  pharmacyDistanceRowsToPharmacy PharmacyDistance[] @relation("fk_pharmacy_distance_to_pharmacy_id")
+  stockItemRows StockItem[] @relation("fk_stock_item_pharmacy_id")
+  userPharmacyRows UserPharmacy[] @relation("fk_user_pharmacy_pharmacy_id")
+
+  @@unique([code], map: "pharmacy_code_UNIQUE")
+  @@map("pharmacy")
+}
+
+model StockItem {
+  reservedQuantity Int @default(0) @map("reserved_quantity")
+  quantityAsOf DateTime @default(now()) @map("quantity_as_of") @db.Timestamptz(3)
+  stockId Int @id @default(autoincrement()) @map("stock_id")
+  pharmacyId Int @map("pharmacy_id")
+  drugId Int @map("drug_id")
+  quantity Int @default(0)
+  msl Int @default(0)
+  maxLevel Int @map("max_level")
+  abcClass AbcClass? @map("abc_class")
+  xyzClass XyzClass? @map("xyz_class")
+  updatedAt DateTime @default(now()) @db.Timestamptz(3) @map("updated_at")
+  drug Drug @relation("fk_stock_item_drug_id", fields: [drugId], references: [drugId], onDelete: NoAction, onUpdate: NoAction, map: "fk_stock_item_drug_id")
+  pharmacy Pharmacy @relation("fk_stock_item_pharmacy_id", fields: [pharmacyId], references: [pharmacyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_stock_item_pharmacy_id")
+  auditLogRows AuditLog[] @relation("fk_audit_log_stock_id")
+  forecastRows Forecast[] @relation("fk_forecast_stock_id")
+  recommendationRowsDonorStock Recommendation[] @relation("fk_recommendation_donor_stock_id")
+  recommendationRowsRecipientStock Recommendation[] @relation("fk_recommendation_recipient_stock_id")
+  saleRows Sale[] @relation("fk_sale_stock_id")
+
+  @@unique([pharmacyId, drugId], map: "stock_pharmacy_drug_UNIQUE")
+  @@index([drugId], map: "fk_stock_item_drug_id_idx")
+  @@map("stock_item")
+}
+
+model ForecastRun {
+  id Int @id @default(autoincrement())
+  asOf DateTime @db.Date @map("as_of")
+  synthetic Boolean
+  version String
+  policy Json
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  forecasts Forecast[]
+  @@unique([asOf, synthetic, version])
+  @@map("forecast_run")
+}
+
+model Forecast {
+  redistributionReason String? @map("redistribution_reason")
+  recommendation Recommendation?
+  runId Int? @map("run_id")
+  run ForecastRun? @relation(fields: [runId], references: [id])
+  abcClass AbcClass? @map("abc_class")
+  xyzClass XyzClass? @map("xyz_class")
+  quantity Int?
+  msl Int?
+  maxLevel Int? @map("max_level")
+  quality Json?
+  shortage Decimal? @db.Decimal(14,0)
+  currentSurplus Int? @map("current_surplus")
+  projectedSurplus Int? @map("projected_surplus")
+  forecastId Int @id @default(autoincrement()) @map("forecast_id")
+  stockId Int @map("stock_id")
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  horizonDays Int @default(14) @db.SmallInt @map("horizon_days")
+  predictedDemand Decimal? @db.Decimal(14,2) @map("predicted_demand")
+  shortageProbability Decimal? @db.Decimal(5,4) @map("shortage_probability")
+  modelVersion String @db.VarChar(30) @map("model_version")
+  stock StockItem @relation("fk_forecast_stock_id", fields: [stockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_forecast_stock_id")
+  risk Risk? @relation("fk_risk_forecast_id")
+
+  @@index([stockId], map: "fk_forecast_stock_id_idx")
+  @@unique([runId, stockId])
+  @@map("forecast")
+}
+
+model ImportBatch {
+  status ImportStatus @default(LEGACY)
+  requestKey String? @unique @map("request_key") @db.Char(64)
+  checksum String? @db.Char(64)
+  snapshotAt DateTime? @map("snapshot_at") @db.Timestamptz(3)
+  recordsApplied Int @default(0) @map("records_applied")
+  errors Json @default("[]")
+  isSynthetic Boolean @default(false) @map("is_synthetic")
+  syntheticKey String? @unique @map("synthetic_key")
+  importId Int @id @default(autoincrement()) @map("import_id")
+  uploadedBy Int @map("uploaded_by")
+  pharmacyId Int @map("pharmacy_id")
+  dataType DataType @map("data_type")
+  sourceFormat SourceFormat @map("source_format")
+  fileName String @db.VarChar(150) @map("file_name")
+  uploadedAt DateTime @default(now()) @db.Timestamptz(3) @map("uploaded_at")
+  recordsTotal Int @map("records_total")
+  recordsRejected Int @default(0) @map("records_rejected")
+  assignment UserPharmacy @relation("fk_import_batch_uploaded_by_pharmacy_id", fields: [uploadedBy, pharmacyId], references: [userId, pharmacyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_import_batch_uploaded_by_pharmacy_id")
+  saleRows Sale[] @relation("fk_sale_import_id")
+
+  @@index([uploadedBy, pharmacyId], map: "fk_import_batch_uploaded_by_pharmacy_id_idx")
+  @@index([pharmacyId, importId])
+  @@map("import_batch")
+}
+
+model Risk {
+  forecastId Int @id @map("forecast_id")
+  positionType PositionType @map("position_type")
+  riskLevel RiskLevel @map("risk_level")
+  surplusQuantity Int? @map("surplus_quantity")
+  daysToStockout Int? @map("days_to_stockout")
+  calculatedAt DateTime @default(now()) @db.Timestamptz(3) @map("calculated_at")
+  forecast Forecast @relation("fk_risk_forecast_id", fields: [forecastId], references: [forecastId], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_forecast_id")
+
+  @@map("risk")
+}
+
+model Sale {
+  stockout Boolean?
+  saleId Int @id @default(autoincrement()) @map("sale_id")
+  stockId Int @map("stock_id")
+  importId Int @map("import_id")
+  saleDate DateTime @db.Date @map("sale_date")
+  quantity Int
+  returnedQuantity Int @default(0) @map("returned_quantity")
+  unitPrice Decimal? @db.Decimal(10,2) @map("unit_price")
+  sourceRow Int? @map("source_row")
+  import ImportBatch @relation("fk_sale_import_id", fields: [importId], references: [importId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sale_import_id")
+  stock StockItem @relation("fk_sale_stock_id", fields: [stockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_sale_stock_id")
+
+  @@unique([stockId, saleDate], map: "sale_stock_date_UNIQUE")
+  @@index([importId], map: "fk_sale_import_id_idx")
+  @@map("sale")
+}

@@ -1,5 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
-import { ApiBody, ApiTags } from '@nestjs/swagger';
+import { authDocs } from '../../swagger/path/auth';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { type AuthRequest, Public } from './auth.guard';
@@ -19,27 +19,19 @@ function emailField(body: unknown) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('Invalid email');
   return email;
 }
-function fields(...names: string[]): MethodDecorator {
-  return ApiBody({ schema: {
-    type: 'object', required: names,
-    properties: Object.fromEntries(names.map((name) => [name, {
-      type: 'string', ...(name.toLowerCase().includes('password') ? { format: 'password' } : {}),
-    }])),
-  } });
-}
 const ip = (req: AuthRequest) => req.ip ?? req.socket.remoteAddress ?? 'unknown';
 const device = (req: AuthRequest) => req.get('User-Agent') ?? 'Unknown device';
 
-@ApiTags('auth')
+@authDocs.controller
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
+  @authDocs.login
   @Public()
   @Post('login')
   @HttpCode(200)
   @Header('Cache-Control', 'no-store')
-  @fields('email', 'password')
   async login(@Body() body: unknown, @Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
     const result = await this.auth.login(emailField(body), field(body, 'password', 256), ip(req), device(req), cookieValue(req.headers.cookie, sessionCookie));
     if (!result.session) {
@@ -51,10 +43,10 @@ export class AuthController {
     return { mfaRequired: false };
   }
 
+  @authDocs.mfa
   @Public()
   @Post('mfa/verify')
   @HttpCode(204)
-  @fields('code')
   async mfa(@Body() body: unknown, @Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
     const challenge = cookieValue(req.headers.cookie, challengeCookie);
     if (!challenge) throw new UnauthorizedException('Запит MFA завершився. Увійди знову з email і паролем.');
@@ -65,12 +57,14 @@ export class AuthController {
     res.cookie(sessionCookie, session.raw, { ...cookieOptions, maxAge: session.maxAge });
   }
 
+  @authDocs.me
   @Get('me')
   @Header('Cache-Control', 'no-store')
   me(@Req() req: AuthRequest) {
     return req.principal;
   }
 
+  @authDocs.sessions
   @Get('sessions')
   @Header('Cache-Control', 'no-store')
   async sessions(@Req() req: AuthRequest) {
@@ -79,6 +73,7 @@ export class AuthController {
     }));
   }
 
+  @authDocs.revoke
   @Delete('sessions/:id')
   @HttpCode(204)
   async revoke(@Req() req: AuthRequest, @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
@@ -87,6 +82,7 @@ export class AuthController {
     if (req.principal!.sessionId === id) res.clearCookie(sessionCookie, cookieOptions);
   }
 
+  @authDocs.logout
   @Post('logout')
   @HttpCode(204)
   async logout(@Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
@@ -94,6 +90,7 @@ export class AuthController {
     res.clearCookie(sessionCookie, cookieOptions);
   }
 
+  @authDocs.logoutAll
   @Post('logout-all')
   @HttpCode(204)
   async logoutAll(@Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
@@ -102,26 +99,26 @@ export class AuthController {
     res.clearCookie(challengeCookie, cookieOptions);
   }
 
+  @authDocs.change
   @Post('password/change')
   @HttpCode(204)
-  @fields('currentPassword', 'newPassword')
   async change(@Body() body: unknown, @Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
     await this.auth.changePassword(req.principal!, field(body, 'currentPassword', 256), field(body, 'newPassword', 256, 12));
     res.clearCookie(sessionCookie, cookieOptions);
   }
 
+  @authDocs.requestReset
   @Public()
   @Post('password/reset-request')
   @HttpCode(204)
-  @fields('email')
   async requestReset(@Body() body: unknown, @Req() req: AuthRequest) {
     await this.auth.requestReset(emailField(body), ip(req));
   }
 
+  @authDocs.reset
   @Public()
   @Post('password/reset')
   @HttpCode(204)
-  @fields('token', 'newPassword')
   async reset(@Body() body: unknown, @Req() req: AuthRequest, @Res({ passthrough: true }) res: Response) {
     const raw = field(body, 'token', 43, 43);
     if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) throw new BadRequestException('Invalid token');

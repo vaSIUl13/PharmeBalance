@@ -1,5 +1,6 @@
 import { BadRequestException, Body, Controller, DefaultValuePipe, Get, Header, Param, ParseIntPipe, Post, Query, Req } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { DatabaseIdPipe } from '../../common/query-id';
+import { pharmaciesDocs } from '../../swagger/path/pharmacies';
 import { Permissions, type AuthRequest } from '../auth/auth.guard';
 import { PharmaciesService } from './pharmacies.service';
 
@@ -18,20 +19,20 @@ function coordinate(input: unknown, key: string, max: number) {
   return input.toFixed(6);
 }
 
-@ApiTags('pharmacies')
+@pharmaciesDocs.controller
 @Controller('pharmacies')
 export class PharmaciesController {
   constructor(private readonly pharmacies: PharmaciesService) {}
 
+  @pharmaciesDocs.list
   @Get()
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: 'List managed pharmacies visible to the current user' })
-  @ApiQuery({ name: 'after', required: false, type: Number })
   list(@Req() req: AuthRequest, @Query('after', new DefaultValuePipe(0), ParseIntPipe) after: number) {
     if (after < 0 || after > 2147483647) throw new BadRequestException('Invalid cursor');
     return this.pharmacies.list(req.principal!, after);
   }
 
+  @pharmaciesDocs.external
   @Get('external')
   @Permissions('REFERENCE_EDIT')
   external(@Query('q') query?: string, @Query('after') after?: string) {
@@ -41,24 +42,16 @@ export class PharmaciesController {
     return this.pharmacies.external(query?.trim(), after === undefined ? undefined : Number(after));
   }
 
+  @pharmaciesDocs.detail
   @Get(':id')
   @Header('Cache-Control', 'no-store')
-  @ApiOperation({ summary: 'View a managed pharmacy within the current user scope' })
-  detail(@Req() req: AuthRequest, @Param('id', ParseIntPipe) id: number) {
+  detail(@Req() req: AuthRequest, @Param('id', DatabaseIdPipe) id: number) {
     return this.pharmacies.detail(req.principal!, id);
   }
 
+  @pharmaciesDocs.create
   @Post()
   @Permissions('REFERENCE_EDIT')
-  @ApiBody({ schema: { type: 'object', required: ['code', 'name', 'city', 'address', 'latitude', 'longitude'],
-    properties: {
-      code: { type: 'string', maxLength: 20 }, name: { type: 'string', maxLength: 100 },
-      city: { type: 'string', maxLength: 60 }, address: { type: 'string', maxLength: 150 },
-      latitude: { type: 'number', minimum: -90, maximum: 90 },
-      longitude: { type: 'number', minimum: -180, maximum: 180 },
-      externalRecordIds: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 10 },
-    },
-  } })
   create(@Body() input: unknown, @Req() request: AuthRequest) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('Expected pharmacy data');
     const body = input as Record<string, unknown>;

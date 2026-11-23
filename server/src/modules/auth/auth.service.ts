@@ -1,7 +1,7 @@
 import { ForbiddenException, Injectable, Logger, OnModuleDestroy, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { authenticator } from 'otplib';
-import { createTransport } from 'nodemailer';
+import { sendPasswordReset } from './password-reset-email';
 import { PrismaService } from '../../database/prisma.service';
 import { endAssignments, lockUser } from '../users/pharmacy-assignments';
 import { AuthRedisService } from './auth-redis.service';
@@ -100,15 +100,19 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     return { raw, maxAge };
   }
 
+  private fallbackPasswordHash() {
+    return this.dummyHash ??= hashPassword(token()).catch((error: unknown) => {
+      this.dummyHash = undefined;
+      throw error;
+    });
+  }
+
   async login(email: string, password: string, ip: string, device: string, previous?: string) {
     await this.redis.limit('login:ip', ip, 30, 900);
     await this.redis.limit('login:account', email, 8, 900);
     const account = await this.db.userAccount.findUnique({ where: { email } });
-    this.dummyHash ??= hashPassword(token()).catch((error: unknown) => {
-      this.dummyHash = undefined;
-      throw error;
-    });
-    const valid = await verifyPassword(password, account?.passwordHash ?? await this.dummyHash);
+    const storedHash = account?.passwordHash ?? await this.fallbackPasswordHash();
+    const valid = await verifyPassword(password, storedHash);
     if (!account || !account.isActive || !valid) {
       await this.audit(this.db, 'LOGIN_DENIED', account?.userId);
       throw new UnauthorizedException('Invalid credentials');
@@ -146,7 +150,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
         where: { tokenHash: hash }, include: { user: { include: { authMfa: true, role: true } } },
       });
       const credentials = live?.user.authMfa;
-      if (!live || !credentials || !live.user.isActive || live.user.role.code !== 'admin' ||
+      if (!live || live.purpose !== 'MFA' || !credentials || !live.user.isActive || live.user.role.code !== 'admin' ||
           live.expiresAt.getTime() <= Date.now()) return null;
 
       if (code.length === 22) {
@@ -253,38 +257,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     await this.redis.limit('reset:email', email, 3, 900);
     // Keep the public response independent of account existence and SMTP timing.
     setImmediate(() => {
-      void this.sendReset(email).catch(() => this.logger.warn('Password reset preparation failed'));
+      void sendPasswordReset(this.db, email).catch(() => this.logger.warn('Password reset request failed'));
     });
-  }
-
-  private async sendReset(email: string) {
-    const user = await this.db.userAccount.findUnique({ where: { email }, select: { userId: true, isActive: true } });
-    const smtp = process.env.AUTH_SMTP_URL;
-    const from = process.env.AUTH_MAIL_FROM;
-    if (!user?.isActive || !smtp || !from) return;
-    const raw = token();
-    await this.db.$transaction(async (tx) => {
-      await lockUser(tx, user.userId);
-      await tx.authChallenge.deleteMany({ where: { userId: user.userId, purpose: 'RESET' } });
-      await tx.authChallenge.create({ data: {
-        userId: user.userId, purpose: 'RESET', tokenHash: digest(raw), expiresAt: new Date(Date.now() + 15 * minute),
-      } });
-      await this.audit(tx, 'PASSWORD_RESET_REQUESTED', user.userId);
-    });
-    const url = new URL('/reset-password', process.env.AUTH_ORIGIN ?? 'http://localhost:3000');
-    url.hash = 'token=' + raw;
-    const delivery = new URL(smtp);
-    const secure = delivery.protocol === 'smtps:';
-    void createTransport({
-      host: delivery.hostname, port: Number(delivery.port || (secure ? 465 : 587)), secure,
-      requireTLS: !secure && process.env.NODE_ENV === 'production',
-      auth: delivery.username ? {
-        user: decodeURIComponent(delivery.username), pass: decodeURIComponent(delivery.password),
-      } : undefined,
-      connectionTimeout: 5000, socketTimeout: 10000,
-    }).sendMail({
-      from, to: email, subject: 'PharmeBalance password reset', text: 'Reset your password: ' + url,
-    }).catch(() => this.logger.warn('Password reset email delivery failed'));
   }
 
   async completeReset(raw: string, password: string, ip: string) {
