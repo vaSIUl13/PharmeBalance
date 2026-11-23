@@ -12,8 +12,8 @@ async function main() {
   if (args.length && !replace) throw new Error('Expected --replace-test or no option.');
   if (replace) {
     const url = new URL(process.env.DATABASE_URL ?? '');
-    if (url.hostname !== '127.0.0.1' || url.pathname !== '/pharmabalance_catalog_test') {
-      console.error('--replace-test requires the local pharmabalance_catalog_test database at 127.0.0.1.');
+    if (url.hostname !== '127.0.0.1' || !['/pharmabalance_catalog_test', '/pharmabalance_catalog_demo'].includes(url.pathname)) {
+      console.error('--replace-test requires a local PharmaBalance catalog test or demo database.');
       process.exitCode = 1;
       return;
     }

@@ -4,6 +4,7 @@ import { ServiceUnavailableException } from '@nestjs/common';
 
 export const sessionCookie = '__Host-pharme-session';
 export const challengeCookie = '__Host-pharme-mfa';
+export const minPasswordLength = 8;
 export const token = () => randomBytes(32).toString('base64url');
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 

@@ -79,7 +79,7 @@ function parseOverpass(payload) {
     const coords = coordinates(item.type === 'node' ? item.lat : item.center?.lat, item.type === 'node' ? item.lon : item.center?.lon);
     return {
       externalId: item.type + ':' + item.id,
-      name: clean(tags.name ?? tags.brand),
+      name: clean(tags['name:uk']) ?? clean(tags.name) ?? clean(tags.brand) ?? clean(tags.operator),
       city: clean(tags['addr:city'] ?? tags['addr:place']),
       address: clean(tags['addr:full']) ?? clean([clean(tags['addr:street']), clean(tags['addr:housenumber'])].filter(Boolean).join(' ')),
       ...coords,

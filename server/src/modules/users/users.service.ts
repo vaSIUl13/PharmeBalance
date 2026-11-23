@@ -1,7 +1,8 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { hashPassword } from '../auth/auth-security';
+import { EmailService } from '../notifications/email.service';
 import type { CreateUserDto, UserAccessDto } from './dto/user-input';
 import { endAssignments, lockUser } from './pharmacy-assignments';
 
@@ -10,7 +11,9 @@ const userFields = { userId: true, login: true, email: true, firstName: true, la
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly db: PrismaService) {}
+  private readonly logger = new Logger(UsersService.name);
+
+  constructor(private readonly db: PrismaService, private readonly email: EmailService) {}
 
   roles() {
     return this.db.role.findMany({
@@ -37,7 +40,16 @@ export class UsersService {
     const { password, ...profile } = input;
     const passwordHash = await hashPassword(password);
     try {
-      return await this.db.$transaction(tx => this.createWithHash(tx, actor, profile, passwordHash));
+      const user = await this.db.$transaction(tx => this.createWithHash(tx, actor, profile, passwordHash));
+      if (this.email.enabled && !user.email.endsWith('.invalid')) {
+        const subject = 'PharmaBalance: ваш обліковий запис створено';
+        const text = 'Адміністратор створив для вас обліковий запис у PharmaBalance. ' +
+          'Увійдіть із цією адресою та тимчасовим паролем, який адміністратор передасть окремо.' +
+          (user.role.code === 'admin' ? ' Узгодьте з суперадміністратором налаштування двофакторної перевірки.' : '');
+        void this.email.sendAccountNotice(user.email, { subject, text, html: '<p>' + text + '</p>' })
+          .catch(() => this.logger.warn('Account creation email failed'));
+      }
+      return user;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new ConflictException('Login or email already exists');
       throw error;

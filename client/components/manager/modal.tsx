@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
+import { useModalDialog } from "@/components/ui/use-modal-dialog";
 import { Icon } from "@/components/ui/icon";
 
 export function Modal({ title, subtitle, busy, onClose, children }: {
@@ -10,18 +11,13 @@ export function Modal({ title, subtitle, busy, onClose, children }: {
   onClose: () => void;
   children: ReactNode;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+
   const titleId = useId();
 
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    element.showModal();
-    return () => element.close();
-  }, []);
+  const dialog = useModalDialog(busy, onClose);
 
   return (
-    <dialog ref={dialog} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}
+    <dialog {...dialog} aria-labelledby={titleId}
       className="m-auto w-[min(100%-24px,520px)] rounded-xl border border-[#e2e8e5] bg-white p-0 text-[#0f172a] backdrop:bg-[#0f172a]/40">
       <header className="flex items-start gap-3 border-b border-[#e2e8e5] px-5 py-4">
         <div className="min-w-0 flex-1">

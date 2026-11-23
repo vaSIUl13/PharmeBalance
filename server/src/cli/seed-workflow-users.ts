@@ -2,10 +2,10 @@ import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../modules/auth/auth-security';
 
 const people = [
-  { login: 'olena.koval', firstName: 'Олена', lastName: 'Коваль', role: 'manager', pharmacy: null },
-  { login: 'andrii.melnyk', firstName: 'Андрій', lastName: 'Мельник', role: 'logist', pharmacy: 'SYN-DEV-002' },
-  { login: 'taras.bondar', firstName: 'Тарас', lastName: 'Бондар', role: 'logist', pharmacy: 'SYN-DEV-003' },
-  { login: 'mariia.shevchenko', firstName: 'Марія', lastName: 'Шевченко', role: 'head', pharmacy: 'SYN-DEV-001' },
+  { login: 'manager', previous: 'olena.koval', firstName: 'Олена', lastName: 'Коваль', role: 'manager', pharmacy: null },
+  { login: 'logist-1', previous: 'andrii.melnyk', firstName: 'Андрій', lastName: 'Мельник', role: 'logist', pharmacy: 'SYN-DEV-002' },
+  { login: 'logist-2', previous: 'taras.bondar', firstName: 'Тарас', lastName: 'Бондар', role: 'logist', pharmacy: 'SYN-DEV-003' },
+  { login: 'head', previous: 'mariia.shevchenko', firstName: 'Марія', lastName: 'Шевченко', role: 'head', pharmacy: 'SYN-DEV-001' },
 ];
 
 async function main() {
@@ -19,11 +19,17 @@ async function main() {
   try {
     const accounts = await db.$transaction(async tx => {
       const result = [];
-      for (const { login, firstName, lastName, role, pharmacy } of people) {
+      for (const { login, previous, firstName, lastName, role, pharmacy } of people) {
         const email = login + '@example.invalid';
-        const existing = await tx.userAccount.findUnique({ where: { email }, include: { role: true } });
-        if (existing && (existing.login !== login || existing.role.code !== role)) throw Error('Demo account conflict');
-        const { userId } = existing ?? await tx.userAccount.create({
+        const matches = await tx.userAccount.findMany({
+          where: { email: { in: [email, previous + '@example.invalid'] } }, include: { role: true },
+        });
+        const [existing] = matches;
+        if (matches.length > 1 || existing && (existing.role.code !== role ||
+            existing.login !== (existing.email === email ? login : previous))) throw Error('Demo account conflict');
+        const { userId } = existing ? await tx.userAccount.update({
+          where: { userId: existing.userId }, data: { login, email },
+        }) : await tx.userAccount.create({
           data: { login, email, firstName, lastName, passwordHash: await hashPassword(password), role: { connect: { code: role } } },
         });
         if (pharmacy) {

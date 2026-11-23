@@ -5,7 +5,7 @@ import { EmailService } from './email.service';
 import { transferEmail } from './transfer-email';
 
 const context = { action: { include: { actionType: true, recommendation: {
-  include: { donorStock: true, recipientStock: true, recommendationActionRows: {
+  include: { donorStock: { include: { pharmacy: { select: { isSynthetic: true } } } }, recipientStock: true, recommendationActionRows: {
     where: { actionType: { code: 'CONFIRM' } }, select: { userId: true },
   } },
 } } } } satisfies Prisma.EmailEventInclude;
@@ -33,6 +33,8 @@ function audience(event: Event): Prisma.UserAccountWhereInput {
 
 const maxAttempts = 5;
 const mailbox = /^[^\s@<>\x00-\x1f]+@[^\s@<>\x00-\x1f]+\.[^\s@<>\x00-\x1f]+$/;
+const deliverable = (email: string, event: Event) => mailbox.test(email) &&
+  !(event.action.recommendation.donorStock.pharmacy.isSynthetic && email.toLowerCase().endsWith('@example.invalid'));
 const statusLabels: Record<string, string> = {
   CONFIRMED: 'Підтверджена', REJECTED: 'Відхилена', CANCELLED: 'Скасована',
   IN_PROGRESS: 'У виконанні', COMPLETED: 'Виконана',
@@ -90,7 +92,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       const deliveries: Prisma.EmailDeliveryCreateManyInput[] = [];
       for (const user of users) {
         const email = user.email.trim().toLowerCase();
-        if (!mailbox.test(email)) continue;
+        if (!deliverable(email, event)) continue;
         foundRoles.add(user.role.code);
         if (seen.has(email)) continue;
         seen.add(email);
@@ -114,7 +116,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
       const delivery = await tx.emailDelivery.findUniqueOrThrow({ where: claim, include: { event: { include: context } } });
       const user = await tx.userAccount.findFirst({ where: { AND: [{ userId: delivery.userId }, audience(delivery.event)] },
         select: { email: true } });
-      if (!user || !mailbox.test(user.email.trim())) {
+      if (!user || !deliverable(user.email.trim(), delivery.event)) {
         await tx.emailDelivery.update({ where: claim, data: { skippedAt: new Date(), lastError: 'RECIPIENT_UNAVAILABLE' } });
         return true;
       }

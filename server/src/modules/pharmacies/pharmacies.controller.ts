@@ -35,11 +35,12 @@ export class PharmaciesController {
   @pharmaciesDocs.external
   @Get('external')
   @Permissions('REFERENCE_EDIT')
-  external(@Query('q') query?: string, @Query('after') after?: string) {
+  external(@Query('q') query?: string, @Query('after') after?: string, @Query('complete') complete?: string) {
     if ((query !== undefined && (typeof query !== 'string' || query.length > 100)) ||
         (after !== undefined && (typeof after !== 'string' || !/^\d+$/.test(after) ||
-          Number(after) > 2147483647))) throw new BadRequestException('Invalid search parameters');
-    return this.pharmacies.external(query?.trim(), after === undefined ? undefined : Number(after));
+          Number(after) > 2147483647)) ||
+        (complete !== undefined && complete !== 'true')) throw new BadRequestException('Invalid search parameters');
+    return this.pharmacies.external(query?.trim(), after === undefined ? undefined : Number(after), complete === 'true');
   }
 
   @pharmaciesDocs.detail
@@ -55,13 +56,13 @@ export class PharmaciesController {
   create(@Body() input: unknown, @Req() request: AuthRequest) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('Expected pharmacy data');
     const body = input as Record<string, unknown>;
-    const code = text(body, 'code', 20).toUpperCase();
-    if (!/^[A-Z0-9][A-Z0-9._-]*$/.test(code) || code.startsWith('SYN-')) throw new BadRequestException('Invalid pharmacy code');
     const ids = body.externalRecordIds ?? [];
     if (!Array.isArray(ids) || ids.length > 10 ||
         ids.some((id) => !Number.isInteger(id) || id <= 0 || id > 2147483647)) {
       throw new BadRequestException('Invalid external record IDs');
     }
+    const code = body.code === undefined && ids.length ? 'EXT-' + ids[0] : text(body, 'code', 20).toUpperCase();
+    if (!/^[A-Z0-9][A-Z0-9._-]*$/.test(code) || code.startsWith('SYN-')) throw new BadRequestException('Invalid pharmacy code');
     return this.pharmacies.create({
       code, name: text(body, 'name', 100), city: text(body, 'city', 60), address: text(body, 'address', 150),
       latitude: coordinate(body.latitude, 'latitude', 90), longitude: coordinate(body.longitude, 'longitude', 180),

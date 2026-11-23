@@ -4,6 +4,26 @@ import assert = require('node:assert/strict');
 
 export async function testAdministration(t: TestContext, context: SignedInFixture) {
   const { db, run, accounts, managedIds, request, cookie, login, admin, head, password } = context;
+  await t.test('admin creates an account with eight characters and notifies the recipient once', async test => {
+    const email = context.email;
+    const send = test.mock.method(email, 'sendAccountNotice', async (to: string, message: { text: string; html: string }) => {
+      assert.equal(to, run + '.notice@example.test');
+      assert(!message.text.includes('Temp1234') && !message.html.includes('Temp1234'));
+      assert.equal(await db.userAccount.count({ where: { email: to } }), 1);
+    });
+    Object.defineProperty(email, 'enabled', { value: true });
+    test.after(() => { Object.defineProperty(email, 'enabled', { value: false }); });
+    const body = { email: run + '.notice@example.test', login: 'notice-' + run,
+      firstName: 'Test', lastName: 'Notice', role: 'manager', password: 'Temp1234' };
+    const create = (password: string) => request('/users', { method: 'POST', cookies: admin, body: { ...body, password } });
+    assert.equal((await create('Temp123')).status, 400);
+    const created = await create(body.password);
+    assert.equal(created.status, 201);
+    accounts.notice = await created.json();
+    assert.equal((await create(body.password)).status, 409);
+    assert.equal(send.mock.callCount(), 1);
+    await send.mock.calls[0].result;
+  });
   await t.test('managed resource routes reject IDs outside the database range', async () => {
     for (const id of ['0', '-1', '2147483648', '99999999999999999']) {
       assert.equal((await request('/pharmacies/' + id, { cookies: admin })).status, 400);
@@ -13,19 +33,21 @@ export async function testAdministration(t: TestContext, context: SignedInFixtur
   });
   await t.test('administrators link a catalog pharmacy, assign exactly one head, activate and audit it', async test => {
     const external = await db.externalPharmacy.create({ data: {
-      source: 'OSM', externalId: 'admin-' + run, name: 'Catalog ' + run, latitude: 49, longitude: 24,
+      source: 'OSM', externalId: 'admin-' + run, name: 'Catalog ' + run, city: 'Test', address: 'Test',
+      latitude: 49, longitude: 24,
     } });
     test.after(async () => { await db.externalPharmacy.delete({ where: { id: external.id } }); });
     assert.equal((await request('/pharmacies/external?q=' + run, { cookies: head })).status, 403);
-    const catalog = await request('/pharmacies/external?q=' + run, { cookies: admin });
+    const catalog = await request('/pharmacies/external?complete=true&q=' + run, { cookies: admin });
     assert.equal(catalog.status, 200);
     assert.deepEqual((await catalog.json()).items.map((row: { id: number }) => row.id), [external.id]);
     const created = await request('/pharmacies', { method: 'POST', cookies: admin, body: {
-      code: 'M' + run, name: 'Managed', city: 'Test', address: 'Test', latitude: 49, longitude: 24,
+      name: 'Managed', city: 'Test', address: 'Test', latitude: 49, longitude: 24,
       externalRecordIds: [external.id],
     } });
     assert.equal(created.status, 201);
-    const { pharmacyId, isActive } = await created.json();
+    const { pharmacyId, isActive, code } = await created.json();
+    assert.equal(code, 'EXT-' + external.id);
     managedIds.push(pharmacyId);
     assert.equal(isActive, false);
     assert.equal((await db.externalPharmacy.findUniqueOrThrow({ where: { id: external.id } })).pharmacyId, pharmacyId);
@@ -34,6 +56,14 @@ export async function testAdministration(t: TestContext, context: SignedInFixtur
       externalRecordIds: [external.id],
     } })).status, 409);
     assert.equal(await db.pharmacy.count({ where: { code: 'X' + run } }), 0);
+    const manual = await request('/pharmacies', { method: 'POST', cookies: admin, body: {
+      code: 'Y' + run, name: 'Manual pharmacy', city: 'Test', address: 'Test', latitude: 49.841353, longitude: 24.031773,
+    } });
+    assert.equal(manual.status, 201);
+    const manualPharmacy = await manual.json();
+    managedIds.push(manualPharmacy.pharmacyId);
+    assert.equal(Number(manualPharmacy.latitude), 49.841353);
+    assert.equal(Number(manualPharmacy.longitude), 24.031773);
     const body = { login: 'new-' + run, email: run + '@example.invalid', firstName: 'New',
       lastName: 'Head', password, role: 'manager' };
     const create = (cookies: string | undefined, data: unknown) => request('/users', { method: 'POST', cookies, body: data });

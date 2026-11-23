@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
 import { createPharmacy, searchExternalPharmacies } from "@/lib/admin/api";
 import type { CreatePharmacyInput, ExternalPharmacy } from "@/lib/admin/types";
 import { ApiError } from "@/lib/auth";
 import { buttonClasses, inputClasses, Notice } from "@/components/head/ui";
 import { Modal } from "./modal";
+import { PharmacyMap } from "./pharmacy-map";
 
 const fields = [
   { name: "code", label: "Код аптеки", maxLength: 20 },
@@ -18,17 +19,54 @@ const fields = [
 
 const initialValues = { code: "", name: "", city: "", address: "", latitude: "", longitude: "" };
 
+function catalogText(value: string | null) {
+  const text = value?.trim() ?? "";
+  return /^[?\uFFFD\s]+$/u.test(text) ? "" : text;
+}
+
+function complete(item: ExternalPharmacy) {
+  return [item.name, item.city, item.address, item.latitude, item.longitude].every(value => Boolean(catalogText(value)));
+}
+
+function coordinate(value: string, bound: number) {
+  const clean = value.trim().replace(",", ".");
+  const number = Number(clean);
+  return /^-?\d+(\.\d+)?$/.test(clean) && Math.abs(number) <= bound ? number : null;
+}
+
 export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (name: string) => void }) {
+  const formId = useId();
   const [values, setValues] = useState(initialValues);
   const [query, setQuery] = useState("");
   const [lastQuery, setLastQuery] = useState("");
   const [items, setItems] = useState<ExternalPharmacy[] | null>(null);
   const [next, setNext] = useState<number | null>(null);
   const [selected, setSelected] = useState<ExternalPharmacy | null>(null);
-  const [searching, setSearching] = useState(false);
+  const [searching, setSearching] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchError, setSearchError] = useState("");
   const [error, setError] = useState("");
+  const rankedItems = items?.toSorted((a, b) => {
+    const linked = Number(a.pharmacyId !== null) - Number(b.pharmacyId !== null);
+    if (linked) return linked;
+    const fields = (item: ExternalPharmacy) => [item.name, item.city, item.address, item.latitude, item.longitude]
+      .filter(value => catalogText(value)).length;
+    return fields(b) - fields(a);
+  });
+
+  useEffect(() => {
+    let active = true;
+    void searchExternalPharmacies("").then(page => {
+      if (!active) return;
+      setItems(page.items.filter(complete));
+      setNext(page.next);
+    }).catch(() => {
+      if (active) setSearchError("Не вдалося завантажити зовнішній довідник.");
+    }).finally(() => {
+      if (active) setSearching(false);
+    });
+    return () => { active = false; };
+  }, []);
 
   async function search(event?: FormEvent<HTMLFormElement>, after?: number) {
     event?.preventDefault();
@@ -37,7 +75,8 @@ export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; on
     const term = after === undefined ? query.trim() : lastQuery;
     try {
       const page = await searchExternalPharmacies(term, after);
-      setItems(current => after === undefined ? page.items : [...(current ?? []), ...page.items]);
+      const records = page.items.filter(complete);
+      setItems(current => after === undefined ? records : [...(current ?? []), ...records]);
       setNext(page.next);
       setLastQuery(term);
     } catch {
@@ -47,20 +86,28 @@ export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; on
     }
   }
 
-  function select(item: ExternalPharmacy) {
+  const select = useCallback((item: ExternalPharmacy) => {
+    setError("");
     setSelected(item);
-    setValues(current => ({ ...current, name: item.name ?? "", city: item.city ?? "", address: item.address ?? "",
+    setValues(current => ({ ...current,
+      name: catalogText(item.name), city: catalogText(item.city), address: catalogText(item.address),
       latitude: item.latitude ?? "", longitude: item.longitude ?? "" }));
-  }
+  }, []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
+    const latitude = coordinate(values.latitude, 90);
+    const longitude = coordinate(values.longitude, 180);
+    if (latitude === null || longitude === null) {
+      setError("Введіть широту від −90 до 90 та довготу від −180 до 180.");
+      return;
+    }
     setSaving(true);
     setError("");
     const input: CreatePharmacyInput = {
-      code: values.code.trim(), name: values.name.trim(), city: values.city.trim(), address: values.address.trim(),
-      latitude: Number(values.latitude), longitude: Number(values.longitude),
+      code: selected ? "EXT-" + selected.id : values.code.trim(), name: values.name.trim(), city: values.city.trim(), address: values.address.trim(),
+      latitude, longitude,
       externalRecordIds: selected ? [selected.id] : undefined,
     };
     try {
@@ -77,53 +124,60 @@ export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; on
   }
 
   return (
-    <Modal title="Додати аптеку" subtitle="Заповніть дані вручну або виберіть аптеку з довідника." busy={saving} onClose={onClose}>
-      <details className="border-b border-[#e2e8e5] px-5 py-3">
-        <summary className="cursor-pointer text-sm font-semibold text-[#0f766e]">Зовнішній довідник</summary>
-        <form className="mt-3 flex flex-wrap gap-2" onSubmit={search}>
-          <input className={inputClasses + " flex-1"} aria-label="Пошук у зовнішньому довіднику"
+    <Modal wide title="Додати аптеку" subtitle="Виберіть аптеку з довідника або заповніть дані вручну." busy={saving} onClose={onClose}
+      footer={<>
+        {error && <div className="w-full"><Notice tone="danger">{error}</Notice></div>}
+        <button type="button" className={buttonClasses.secondary} onClick={onClose} disabled={saving}>Скасувати</button>
+        <button form={formId} type="submit" className={buttonClasses.primary} disabled={saving}>{saving ? "Зберігаємо…" : "Додати аптеку"}</button>
+      </>}>
+      <section aria-label="Зовнішній довідник аптек" className="space-y-3 border-b border-[#e2e8e5] px-5 py-4">
+        <form className="flex flex-wrap gap-2" onSubmit={search}>
+          <input className={inputClasses + " min-w-0 flex-1"} aria-label="Пошук у зовнішньому довіднику"
             placeholder="Назва, місто або адреса" maxLength={100} value={query} onChange={event => setQuery(event.target.value)} />
           <button className={buttonClasses.secondary} disabled={searching || saving}>Знайти</button>
         </form>
+        {searching && <p role="status" className="text-sm text-[#475569]">Завантажуємо аптеки…</p>}
         {searchError && <p role="alert" className="mt-2 text-sm text-[#b91c1c]">{searchError}</p>}
-        {items?.length === 0 && <p className="mt-2 text-sm text-[#475569]">Аптек за цим запитом немає.</p>}
+        {items?.length === 0 && <p className="mt-2 text-sm text-[#475569]">У довіднику немає аптек із повними даними за цим запитом.</p>}
         {items && items.length > 0 && (
-          <ul className="mt-3 max-h-44 divide-y divide-[#e2e8e5] overflow-y-auto rounded-md border border-[#e2e8e5]">
-            {items.map(item => <li key={item.id}>
+          <div className="grid gap-3 md:grid-cols-[1.4fr_1fr]">
+            <PharmacyMap items={items} onSelect={select} />
+            <ul aria-label="Результати пошуку" className="max-h-56 divide-y divide-[#e2e8e5] overflow-y-auto rounded-md border border-[#e2e8e5] sm:max-h-64">
+            {rankedItems?.map(item => <li key={item.id}>
               <button type="button" disabled={item.pharmacyId !== null || saving} aria-pressed={selected?.id === item.id}
                 onClick={() => select(item)}
                 className="block w-full px-3 py-2 text-left text-sm hover:bg-[#f8faf9] aria-pressed:bg-[#ecfdf5] disabled:opacity-60">
-                <span className="block font-medium">{item.name ?? "Аптека без назви"}</span>
-                <span className="block text-xs text-[#475569]">{[item.source, item.city, item.address, item.pharmacyId !== null ? "Вже прив’язано" : null].filter(Boolean).join(" · ")}</span>
+                <span className="block font-medium">{catalogText(item.name) || "Аптека без назви"}</span>
+                <span className="block text-xs text-[#475569]">{[item.source, catalogText(item.city), catalogText(item.address), item.pharmacyId !== null ? "Вже прив’язано" : null].filter(Boolean).join(" · ")}</span>
               </button>
             </li>)}
-          </ul>
+            </ul>
+          </div>
         )}
         {next !== null && <button type="button" className={buttonClasses.secondary + " mt-2"} disabled={searching || saving}
           onClick={() => void search(undefined, next)}>Показати ще</button>}
-      </details>
-      <form onSubmit={submit}>
+        {items && items.length > 0 && <p className="text-xs text-[#475569]">Зелені точки можна додати, сірі вже прив’язані до мережі.</p>}
+      </section>
+      <form id={formId} onSubmit={submit}>
         <div className="space-y-3 px-5 py-4">
           {selected && <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-            <span>{selected.name ?? "Аптека"} · {selected.source}</span>
+            <span>{catalogText(selected.name) || "Аптека"} · {selected.source}</span>
             <button type="button" className={buttonClasses.secondary} disabled={saving}
-              onClick={() => setSelected(null)}>Від’єднати запис</button>
+              onClick={() => { setSelected(null); setError(""); }}>Від’єднати запис</button>
           </div>}
+          {selected && fields.some(field => field.name !== "code" && !values[field.name].trim()) && (
+            <p className="text-sm text-[#475569]">У довіднику бракує даних. Заповніть порожні поля перед збереженням.</p>
+          )}
           <div className="grid gap-3 sm:grid-cols-2">
-            {fields.map(field => <label key={field.name} className="grid gap-1 text-sm font-medium">
+            {fields.filter(field => !selected || field.name !== "code").map(field => <label key={field.name} className="grid gap-1 text-sm font-medium">
               {field.label}
               <input className={inputClasses} required disabled={saving} value={values[field.name]}
-                {...("bound" in field ? { type: "number", min: -field.bound, max: field.bound, step: "any" }
+                {...("bound" in field ? { inputMode: "decimal" as const }
                   : { maxLength: field.maxLength, pattern: field.name === "code" ? "[A-Za-z0-9][A-Za-z0-9._\\-]*" : undefined })}
-                onChange={event => setValues(current => ({ ...current, [field.name]: event.target.value }))} />
+                onChange={event => { setError(""); setValues(current => ({ ...current, [field.name]: event.target.value })); }} />
             </label>)}
           </div>
-          {error && <Notice tone="danger">{error}</Notice>}
         </div>
-        <footer className="flex justify-end gap-2 border-t border-[#e2e8e5] px-5 py-4">
-          <button type="button" className={buttonClasses.secondary} onClick={onClose} disabled={saving}>Скасувати</button>
-          <button type="submit" className={buttonClasses.primary} disabled={saving}>{saving ? "Зберігаємо…" : "Додати аптеку"}</button>
-        </footer>
       </form>
     </Modal>
   );

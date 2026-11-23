@@ -35,7 +35,7 @@ export function createPharmacy(input: CreatePharmacyInput): Promise<AdminPharmac
 }
 
 export function searchExternalPharmacies(query: string, after?: number): Promise<Page<ExternalPharmacy>> {
-  const params = new URLSearchParams({ q: query });
+  const params = new URLSearchParams({ q: query, complete: "true" });
   if (after !== undefined) params.set("after", String(after));
   return apiRequest("pharmacies/external?" + params);
 }

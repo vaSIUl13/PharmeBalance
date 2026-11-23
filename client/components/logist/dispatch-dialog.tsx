@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { ApiError } from "@/lib/auth";
 import { formatDrug } from "@/lib/head/format";
 import type { TransferDetail } from "@/lib/head/types";
 import { dispatchTransfer } from "@/lib/logist/api";
+import { useModalDialog } from "@/components/ui/use-modal-dialog";
 import { Icon } from "@/components/ui/icon";
 import { buttonClasses, inputClasses, Notice } from "@/components/head/ui";
 
@@ -24,17 +25,12 @@ export function DispatchDialog({ trip, onClose, onChanged }: {
   onClose: () => void;
   onChanged: (message: string) => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const drug = trip.donorStock.drug;
 
-  useEffect(() => {
-    const element = dialog.current;
-    if (!element) return;
-    element.showModal();
-    return () => element.close();
-  }, []);
+  const dialog = useModalDialog(busy, onClose);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -56,7 +52,7 @@ export function DispatchDialog({ trip, onClose, onChanged }: {
   }
 
   return (
-    <dialog ref={dialog} aria-labelledby="dispatch-title" onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}
+    <dialog {...dialog} aria-labelledby="dispatch-title"
       className="m-auto w-[min(100%-24px,480px)] rounded-xl border border-[#e2e8e5] bg-white p-0 text-[#0f172a] backdrop:bg-[#0f172a]/40">
       <form onSubmit={submit}>
         <header className="flex items-start gap-3 border-b border-[#e2e8e5] px-5 py-4">

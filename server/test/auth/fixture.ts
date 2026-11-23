@@ -8,6 +8,7 @@ import { NestFactory } from '@nestjs/core';
 import { createClient } from 'redis';
 import { AppModule } from '../../src/app.module';
 import { setupSwagger } from '../../src/config/swagger';
+import { EmailService } from '../../src/modules/notifications/email.service';
 
 interface RequestOptions {
   method?: string;
@@ -107,7 +108,7 @@ export async function createFixture(t: TestContext) {
     response.headers.getSetCookie().find((header) => header.startsWith(prefix))?.split(';')[0];
   const login = (role: string, value = password, csrf = true) =>
     request('/auth/login', { method: 'POST', body: { email: accounts[role].email, password: value }, csrf });
-  return { baseUrl: await app.getUrl(), origin, root, db, redis, run, accounts, password, nextPassword,
+  return { baseUrl: await app.getUrl(), origin, root, db, redis, email: app.get(EmailService), run, accounts, password, nextPassword,
     pharmacyIds, managedIds, drugIds, stockIds, transferIds, forecastRunIds, request, cookie, login };
 }
 

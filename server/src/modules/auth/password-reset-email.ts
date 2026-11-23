@@ -10,6 +10,7 @@ export async function sendPasswordReset(db: PrismaService, email: string) {
   const smtp = process.env.AUTH_SMTP_URL;
   const from = process.env.AUTH_MAIL_FROM;
   if (!user?.isActive || !smtp || !from) return;
+  if (email.endsWith('@example.invalid') && new URL(process.env.DATABASE_URL!).pathname.endsWith('_demo')) return;
   const raw = token();
   const prepared = await db.$transaction(async (tx) => {
     await lockUser(tx, user.userId);

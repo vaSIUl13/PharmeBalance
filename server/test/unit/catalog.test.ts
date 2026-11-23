@@ -3,6 +3,17 @@ import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { parseDrlz, parseOverpass, parsePharmacyCsv, packageKey, drlzUrl, createHttpClient, makeSource, PROFILES, simulate } from './catalog-scripts';
 
+test('nationwide OSM sync uses the Ukraine area and reads pharmacy results', async () => {
+  const provider = 'https://example.invalid/api/interpreter';
+  const adapter = await makeSource('osm', { ukraine: true, 'overpass-url': provider }, () => async (url, request) => {
+    assert.equal(url, provider);
+    assert.match(request.body.get('data') ?? '', /ISO3166-1"="UA"[\s\S]+nwr\["amenity"="pharmacy"\]\(area\.ua\)/);
+    return { body: { elements: [{ type: 'node', id: 1, lat: 50, lon: 30, tags: { amenity: 'pharmacy', name: 'Pharmacy' } }] } };
+  });
+  assert.equal(adapter.scope, provider + '|UA');
+  assert.equal((await adapter.page()).records[0].externalId, 'node:1');
+});
+
 test('registry preserves multiple packages and manufacturer roles', () => {
   const row = parseDrlz({
     id: 'ua-7888-01-01', attributes: {

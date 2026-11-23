@@ -28,10 +28,12 @@ export class PharmaciesService {
     return row;
   }
 
-  async external(query?: string, after?: number) {
+  async external(query?: string, after?: number, complete = false) {
     const rows = await this.db.externalPharmacy.findMany({
       where: {
         ...(after === undefined ? {} : { id: { gt: after } }),
+        ...(complete ? { name: { not: null }, city: { not: null }, address: { not: null },
+          latitude: { not: null }, longitude: { not: null } } : {}),
         ...(query ? { OR: [
           { name: { contains: query, mode: 'insensitive' } },
           { city: { contains: query, mode: 'insensitive' } },
