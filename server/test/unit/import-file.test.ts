@@ -1,8 +1,8 @@
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
-const { parseFile, snapshotTime, maxBytes } = require('../dist/modules/imports/import-file');
-const json = rows => parseFile(Buffer.from(JSON.stringify(rows)), 'JSON', 'SALES');
-const csv = text => parseFile(Buffer.from(text), 'CSV', 'STOCKS');
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { parseFile, snapshotTime, maxBytes } from '../../src/modules/imports/import-file';
+const json = (rows: unknown[]) => parseFile(Buffer.from(JSON.stringify(rows)), 'JSON', 'SALES');
+const csv = (text: string) => parseFile(Buffer.from(text), 'CSV', 'STOCKS');
 
 test('UTF-8 BOM, zero demand, prices and record numbering', () => {
   assert.deepEqual(csv('\ufeffsku,quantity\r\nA,0\r\n').errors, []);
@@ -29,5 +29,19 @@ test('file envelope, encoding, size and UTC snapshot instant', () => {
   for (const invalid of ['2025-02-29T00:00:00Z', '2025-01-01', '2025-01-01T24:00:00Z', '2999-01-01T00:00:00Z']) {
     assert.equal(snapshotTime(invalid), undefined);
   }
-  assert.equal(snapshotTime('2024-02-29T00:00:00.12Z').toISOString(), '2024-02-29T00:00:00.120Z');
+  assert.equal(snapshotTime('2024-02-29T00:00:00.12Z')?.toISOString(), '2024-02-29T00:00:00.120Z');
+});
+
+test('daily sales distinguish a reported zero, a stockout and unknown availability', () => {
+  const records = [
+    { sku: 'A', quantity: 0, date: '2024-03-01', stockout: false },
+    { sku: 'A', quantity: 0, date: '2024-03-02', stockout: true },
+    { sku: 'A', quantity: 0, date: '2024-03-03' },
+  ];
+  const parsed = json(records);
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(parsed.rows.map(row => row.stockout), [false, true, null]);
+  const csvSales = 'sku,quantity,date,stockout\nA,0,2024-03-01,false\nA,0,2024-03-02,true\nA,0,2024-03-03,';
+  assert.deepEqual(parseFile(Buffer.from(csvSales), 'CSV', 'SALES'), parsed);
+  assert.deepEqual(json([{ ...records[0], stockout: 'false' }]).errors, [{ row: 1, message: 'Invalid stockout flag' }]);
 });

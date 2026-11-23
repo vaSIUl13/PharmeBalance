@@ -1,7 +1,7 @@
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
-const { parseDrlz, parseOverpass, parsePharmacyCsv, packageKey } = require('../scripts/catalog/adapters.cjs');
-const { PROFILES, simulate } = require('../scripts/catalog/demo.cjs');
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { createServer } from 'node:http';
+import { parseDrlz, parseOverpass, parsePharmacyCsv, packageKey, drlzUrl, createHttpClient, makeSource, PROFILES, simulate } from './catalog-scripts';
 
 test('registry preserves multiple packages and manufacturer roles', () => {
   const row = parseDrlz({
@@ -57,8 +57,6 @@ test('demo profiles are deterministic and stock reconciles with sales and replen
 });
 
 test('incremental DRLZ since uses second precision and permits only its own cursor endpoint', async () => {
-  const { makeSource } = require('../scripts/catalog/sync.cjs');
-  const { drlzUrl } = require('../scripts/catalog/adapters.cjs');
   const adapter = await makeSource('drlz', { mode: 'incremental' });
   const checkpoint = adapter.start('2026-11-20T00:00:00.123Z');
   assert.equal(new URL(checkpoint.url).searchParams.get('since'), '2026-11-20T00:00:00Z');
@@ -66,8 +64,6 @@ test('incremental DRLZ since uses second precision and permits only its own curs
 });
 
 test('HTTP client backs off after 429 and stops after a permanent error', async (t) => {
-  const { createServer } = require('node:http');
-  const { createHttpClient } = require('../scripts/catalog/adapters.cjs');
   let attempts = 0;
   const server = createServer((request, response) => {
     if (request.url === '/bad') { response.writeHead(400).end(); return; }
@@ -75,9 +71,11 @@ test('HTTP client backs off after 429 and stops after a permanent error', async 
     if (attempts === 1) response.writeHead(429, { 'Retry-After': '1' }).end();
     else response.writeHead(200, { 'Content-Type': 'application/json' }).end('{"ok":true}');
   });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise((resolve) => server.close(resolve)));
-  const url = 'http://127.0.0.1:' + server.address().port;
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())));
+  const address = server.address();
+  assert(address && typeof address === 'object');
+  const url = 'http://127.0.0.1:' + address.port;
   const request = createHttpClient({ interval: 0, timeout: 2000 });
   const start = Date.now();
   assert.deepEqual((await request(url)).body, { ok: true });

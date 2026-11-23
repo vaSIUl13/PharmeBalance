@@ -1,0 +1,101 @@
+model ActionType {
+  actionTypeId Int @id @default(autoincrement()) @map("action_type_id")
+  code String @db.VarChar(20)
+  name String @db.VarChar(60)
+  permissionId Int @map("permission_id")
+  fromStatus RecommendationStatus @map("from_status")
+  toStatus RecommendationStatus @map("to_status")
+  permission Permission @relation("fk_action_type_permission_id", fields: [permissionId], references: [permissionId], onDelete: NoAction, onUpdate: NoAction, map: "fk_action_type_permission_id")
+  recommendationActionRows RecommendationAction[] @relation("fk_recommendation_action_action_type_id")
+
+  @@unique([code], map: "action_type_code_UNIQUE")
+  @@index([permissionId], map: "fk_action_type_permission_id_idx")
+  @@map("action_type")
+}
+
+model PharmacyDistance {
+  fromPharmacyId Int @map("from_pharmacy_id")
+  toPharmacyId Int @map("to_pharmacy_id")
+  distanceKm Decimal @db.Decimal(7,2) @map("distance_km")
+  source Source
+  calculatedAt DateTime @default(now()) @db.Timestamptz(3) @map("calculated_at")
+  isActual Boolean @default(true) @map("is_actual")
+  fromPharmacy Pharmacy @relation("fk_pharmacy_distance_from_pharmacy_id", fields: [fromPharmacyId], references: [pharmacyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pharmacy_distance_from_pharmacy_id")
+  toPharmacy Pharmacy @relation("fk_pharmacy_distance_to_pharmacy_id", fields: [toPharmacyId], references: [pharmacyId], onDelete: NoAction, onUpdate: NoAction, map: "fk_pharmacy_distance_to_pharmacy_id")
+
+  @@id([fromPharmacyId, toPharmacyId])
+  @@index([toPharmacyId], map: "fk_pharmacy_distance_to_pharmacy_id_idx")
+  @@map("pharmacy_distance")
+}
+
+model Recommendation {
+  forecastId Int? @unique @map("forecast_id")
+  forecast Forecast? @relation(fields: [forecastId], references: [forecastId])
+  distanceKm Decimal? @db.Decimal(7,2) @map("distance_km")
+  distanceSource Source? @map("distance_source")
+  uncoveredQuantity Decimal? @db.Decimal(14,0) @map("uncovered_quantity")
+  recommendationId Int @id @default(autoincrement()) @map("recommendation_id")
+  recipientStockId Int @map("recipient_stock_id")
+  donorStockId Int @map("donor_stock_id")
+  quantity Int
+  priority Int
+  status RecommendationStatus @default(CREATED)
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  donorStock StockItem @relation("fk_recommendation_donor_stock_id", fields: [donorStockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_donor_stock_id")
+  recipientStock StockItem @relation("fk_recommendation_recipient_stock_id", fields: [recipientStockId], references: [stockId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_recipient_stock_id")
+  recommendationActionRows RecommendationAction[] @relation("fk_recommendation_action_recommendation_id")
+
+  @@index([recipientStockId], map: "fk_recommendation_recipient_stock_id_idx")
+  @@index([donorStockId], map: "fk_recommendation_donor_stock_id_idx")
+  @@map("recommendation")
+}
+
+model RecommendationAction {
+  emailEvent EmailEvent?
+  actionId Int @id @default(autoincrement()) @map("action_id")
+  recommendationId Int @map("recommendation_id")
+  actionTypeId Int @map("action_type_id")
+  userId Int @map("user_id")
+  actionTime DateTime @default(now()) @db.Timestamptz(3) @map("action_time")
+  quantity Int?
+  comment String? @db.VarChar(300)
+  actionType ActionType @relation("fk_recommendation_action_action_type_id", fields: [actionTypeId], references: [actionTypeId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_action_action_type_id")
+  recommendation Recommendation @relation("fk_recommendation_action_recommendation_id", fields: [recommendationId], references: [recommendationId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_action_recommendation_id")
+  user UserAccount @relation("fk_recommendation_action_user_id", fields: [userId], references: [userId], onDelete: NoAction, onUpdate: NoAction, map: "fk_recommendation_action_user_id")
+
+  @@unique([recommendationId, actionTypeId], map: "rec_action_UNIQUE")
+  @@index([actionTypeId], map: "fk_recommendation_action_action_type_id_idx")
+  @@index([userId], map: "fk_recommendation_action_user_id_idx")
+  @@map("recommendation_action")
+}
+
+model EmailEvent {
+  actionId Int @id @map("action_id")
+  action RecommendationAction @relation(fields: [actionId], references: [actionId], onDelete: Cascade)
+  donor String
+  recipient String
+  sku String
+  drugName String @map("drug_name")
+  preparedAt DateTime? @map("prepared_at") @db.Timestamptz(3)
+  recipientCount Int @default(0) @map("recipient_count")
+  missingRoles String[] @default([]) @map("missing_roles")
+  deliveries EmailDelivery[]
+  @@index([preparedAt, actionId])
+  @@map("email_event")
+}
+
+model EmailDelivery {
+  id Int @id @default(autoincrement())
+  actionId Int @map("action_id")
+  event EmailEvent @relation(fields: [actionId], references: [actionId], onDelete: Cascade)
+  userId Int @map("user_id")
+  attempts Int @default(0)
+  nextAttemptAt DateTime @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(3)
+  failedAt DateTime? @map("failed_at") @db.Timestamptz(3)
+  skippedAt DateTime? @map("skipped_at") @db.Timestamptz(3)
+  lastError String? @map("last_error")
+  @@unique([actionId, userId])
+  @@index([nextAttemptAt, id])
+  @@map("email_delivery")
+}

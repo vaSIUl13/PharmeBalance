@@ -1,0 +1,59 @@
+model DrugRegistration {
+  registrationId Int @id @default(autoincrement()) @map("registration_id")
+  number String @unique
+  sourceId String @unique @map("source_id")
+  versionId String? @map("version_id")
+  name String @db.Text
+  inn String? @db.Text
+  form String? @db.Text
+  composition String? @db.Text
+  atcCodes String[] @default([]) @map("atc_codes")
+  manufacturers Json
+  packages Json
+  isCurrent Boolean @map("is_current")
+  validFrom DateTime? @map("valid_from") @db.Date
+  validTo DateTime? @map("valid_to") @db.Date
+  sourceModifiedAt DateTime? @map("source_modified_at") @db.Timestamptz(3)
+  removedAt DateTime? @map("removed_at") @db.Timestamptz(3)
+  syncedAt DateTime @default(now()) @map("synced_at") @db.Timestamptz(3)
+  drugs Drug[]
+
+  @@index([versionId])
+  @@map("drug_registration")
+}
+
+model ExternalPharmacy {
+  id Int @id @default(autoincrement())
+  source String @db.VarChar(12)
+  externalId String @map("external_id")
+  name String?
+  city String?
+  address String?
+  latitude Decimal? @db.Decimal(9,6)
+  longitude Decimal? @db.Decimal(9,6)
+  coordinateQuality String? @map("coordinate_quality") @db.VarChar(12)
+  pharmacyId Int? @map("pharmacy_id")
+  pharmacy Pharmacy? @relation(fields: [pharmacyId], references: [pharmacyId], onDelete: SetNull)
+  sourceModifiedAt DateTime? @map("source_modified_at") @db.Timestamptz(3)
+  syncedAt DateTime @default(now()) @map("synced_at") @db.Timestamptz(3)
+
+  @@unique([source, externalId])
+  @@index([pharmacyId])
+  @@map("external_pharmacy")
+}
+
+model CatalogSyncRun {
+  id String @id @default(uuid()) @db.Uuid
+  source String @db.VarChar(12)
+  scope String
+  status String @db.VarChar(12)
+  checkpoint Json
+  counters Json
+  startedAt DateTime @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(3)
+  leaseUntil DateTime @map("lease_until") @db.Timestamptz(3)
+  error String? @db.VarChar(500)
+
+  @@index([source, scope, startedAt])
+  @@map("catalog_sync_run")
+}

@@ -1,8 +1,9 @@
-const assert = require('node:assert/strict');
-const { test } = require('node:test');
-const { Workbook } = require('exceljs');
-const { transferEmail } = require('../dist/modules/notifications/transfer-email');
-const { csvCell, reportFile } = require('../dist/modules/reports/report-format');
+import assert from 'node:assert/strict';
+import { Readable } from 'node:stream';
+import { test } from 'node:test';
+import { Workbook } from 'exceljs';
+import { transferEmail } from '../../src/modules/notifications/transfer-email';
+import { csvCell, reportFile } from '../../src/modules/reports/report-format';
 
 test('transfer email includes plain text and escapes HTML from the catalog', () => {
   const mail = transferEmail({ code: 'DISPATCH', recommendationId: 42, donor: '<img onerror="x">',
@@ -24,7 +25,9 @@ test('CSV sanitizes formula-like cells and XLSX serializes strings as text', asy
   const report = { period: { from: '=1+1', to: '2026-11-21', timeZone: 'Europe/Kyiv' }, pharmacyId: null,
     totals: { shortageRisks: 0, surplusPositions: 0, recommendations: 0, confirmed: 0, dispatched: 0, completed: 0, movedUnits: 0 } };
   const workbook = new Workbook();
-  await workbook.xlsx.load(await reportFile(report, 'xlsx'));
-  assert.equal(workbook.getWorksheet(1).getCell('B2').value, '=1+1');
-  assert.equal(workbook.getWorksheet(1).getCell('B2').formula, undefined);
+  await workbook.xlsx.read(Readable.from([await reportFile(report, 'xlsx')]));
+  const sheet = workbook.getWorksheet(1);
+  assert(sheet);
+  assert.equal(sheet.getCell('B2').value, '=1+1');
+  assert.equal(sheet.getCell('B2').formula, undefined);
 });

@@ -1,18 +1,18 @@
-const { argon2Sync, randomBytes, timingSafeEqual } = require('node:crypto');
-const assert = require('node:assert/strict');
-const { PrismaClient } = require('@prisma/client');
+import { argon2Sync, randomBytes, timingSafeEqual } from 'node:crypto';
+import assert from 'node:assert/strict';
+import { PrismaClient } from '@prisma/client';
 
 const roles = ['admin', 'manager', 'head', 'logist'];
 const params = { parallelism: 1, memory: 19456, passes: 2, tagLength: 32 };
-const encode = (buffer) => buffer.toString('base64').replace(/=+$/, '');
-const derive = (password, nonce) =>
+const encode = (buffer: Buffer) => buffer.toString('base64').replace(/=+$/, '');
+const derive = (password: string, nonce: Buffer) =>
   argon2Sync('argon2id', { ...params, message: Buffer.from(password), nonce });
 
 async function seed() {
   const password = process.env.DEMO_USER_PASSWORD;
   if (!password) throw new Error('Set DEMO_USER_PASSWORD before running this seed.');
 
-  const url = new URL(process.env.DATABASE_URL);
+  const url = new URL(process.env.DATABASE_URL ?? '');
   if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
     throw new Error('This demo seed requires a local database.');
   }
@@ -68,6 +68,6 @@ async function seed() {
 }
 
 seed().catch((error) => {
-  console.error(error.message);
+  console.error(error instanceof Error ? error.message.replace(/postgres(?:ql)?:\/\/\S+/g, '[DATABASE_URL]') : 'Demo seed failed');
   process.exitCode = 1;
 });

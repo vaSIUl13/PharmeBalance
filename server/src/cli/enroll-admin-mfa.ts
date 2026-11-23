@@ -1,7 +1,7 @@
-const { randomBytes } = require('node:crypto');
-const { PrismaClient } = require('@prisma/client');
-const { authenticator } = require('otplib');
-const { digest, encryptMfa } = require('../dist/modules/auth/auth-security');
+import { randomBytes } from 'node:crypto';
+import { PrismaClient } from '@prisma/client';
+import { authenticator } from 'otplib';
+import { digest, encryptMfa } from '../modules/auth/auth-security';
 
 async function main() {
   const email = process.argv[2]?.trim().toLowerCase();
@@ -10,7 +10,7 @@ async function main() {
   const replace = args.length === 1 && args[0] === '--replace-test';
   if (args.length && !replace) throw new Error('Expected --replace-test or no option.');
   if (replace) {
-    const url = new URL(process.env.DATABASE_URL);
+    const url = new URL(process.env.DATABASE_URL ?? '');
     if (url.hostname !== '127.0.0.1' || url.pathname !== '/pharmabalance_catalog_test' ||
         email !== 'admin.test@example.com') {
       throw new Error('--replace-test is restricted to the local catalog test administrator.');
