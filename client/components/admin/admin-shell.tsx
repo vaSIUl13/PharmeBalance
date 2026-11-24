@@ -83,6 +83,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   if (ownerConsole && principal.permissions.includes("REGISTRATION_REVIEW")) {
     navigation.push({ href: "/superadmin/registration-requests", label: "Запити на реєстрацію", short: "Запити", icon: "check" });
   }
+  if (ownerConsole) navigation.push({ href: "/superadmin/demo-day", label: "Закриття demo-дня", short: "Demo-день", icon: "clock" });
 
   const active = (href: string) => pathname.startsWith(href);
   const title = navigation.find(item => active(item.href))?.label ?? "Адміністрування";

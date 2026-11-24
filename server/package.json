@@ -5,6 +5,7 @@
   "scripts": {
     "forecast:run": "node --env-file-if-exists=.env dist/modules/forecasts/worker.js",
     "forecast:worker": "node --env-file-if-exists=.env dist/modules/forecasts/worker.js --watch",
+    "demo:close-day": "node --env-file-if-exists=.env dist/cli/close-demo-day.js",
     "test:forecasts": "npm run build:test && node --test dist-test/test/unit/forecasts.test.js",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",

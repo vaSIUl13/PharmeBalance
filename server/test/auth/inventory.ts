@@ -123,6 +123,12 @@ export async function testInventory(t: TestContext, context: SignedInFixture) {
     for (const options of [{ cookies: manager }, { cookies: admin }, { id: pharmacyIds[1] }]) {
       assert.equal((await upload('stocks', snapshot, options)).status, 403);
     }
+    await db.pharmacy.update({ where: { pharmacyId }, data: { isSynthetic: true } });
+    try {
+      assert.equal((await upload('stocks', snapshot)).status, 403);
+    } finally {
+      await db.pharmacy.update({ where: { pharmacyId }, data: { isSynthetic: false } });
+    }
     assert.equal((await upload('stocks', 'x'.repeat(1024*1024+1))).status, 413);
     const bad = await upload('stocks', snapshot + '\nUNKNOWN-' + run + ',2');
     assert.equal(bad.status, 422);

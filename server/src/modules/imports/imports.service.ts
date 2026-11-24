@@ -74,10 +74,16 @@ export class ImportsService {
     const file = parseFile(buffer, sourceFormat, dataType);
     return this.db.$transaction(async tx => {
       await lockUser(tx, user.userId);
-      const assigned = await tx.userPharmacy.findFirst({ where: { userId: user.userId, pharmacyId, unassignedAt: null, pharmacy: { isSynthetic: false },
-        user: { isActive: true, role: { code: 'head', rolePermissionRows: { some: { permission: { code: 'DATA_IMPORT' } } } } } } });
+      const assigned = await tx.userPharmacy.findFirst({ where: { userId: user.userId, pharmacyId, unassignedAt: null,
+        user: { isActive: true, role: { code: 'head', rolePermissionRows: { some: { permission: { code: 'DATA_IMPORT' } } } } } },
+        select: { pharmacy: { select: { isSynthetic: true } } } });
       if (!assigned) throw new ForbiddenException();
       await tx.$queryRaw`SELECT pharmacy_id FROM pharmacy WHERE pharmacy_id = ${pharmacyId} FOR UPDATE`;
+      const isSynthetic = assigned.pharmacy.isSynthetic;
+      if (isSynthetic) {
+        const [target] = await tx.$queryRaw<{ name: string }[]>`SELECT current_database() AS name`;
+        if (!target.name.endsWith('_demo')) throw new ForbiddenException('Synthetic imports require a demo database');
+      }
       const repeat = await tx.importBatch.findUnique({ where: { requestKey }, omit: { requestKey: true } });
       if (repeat) return repeat;
       const skus = [...new Set(file.rows.map(row => row.sku))];
@@ -88,10 +94,18 @@ export class ImportsService {
         ORDER BY s.stock_id FOR UPDATE OF s` : [];
       const bySku = new Map(positions.map(stock => [stock.sku, stock]));
       const errors = [...file.errors];
+      const latest = isSynthetic && dataType === 'SALES' ? await tx.sale.findFirst({
+        where: { stock: { pharmacyId }, import: { isSynthetic: true, status: { not: 'REJECTED' } } },
+        orderBy: { saleDate: 'desc' }, select: { saleDate: true },
+      }) : null;
+      const demoThrough = latest?.saleDate.toISOString().slice(0, 10);
       let changes: SaleInput[] = [];
       for (const row of file.rows) {
         const stock = bySku.get(row.sku);
         if (!stock) { errors.push({ row: row.row, message: 'Unknown stock SKU in this pharmacy' }); continue; }
+        if (isSynthetic && dataType === 'SALES' && (!demoThrough || row.date > demoThrough)) {
+          errors.push({ row: row.row, message: 'Close this demo day before importing sales corrections' }); continue;
+        }
         if (snapshotAt) {
           if (row.quantity < stock.reserved) {
             errors.push({ row: row.row, message: 'Stock snapshot is below active reservations' }); continue;
@@ -105,7 +119,7 @@ export class ImportsService {
       }
       if (dataType === 'SALES') changes = await changedSales(tx, changes, errors);
       const batch = await tx.importBatch.create({ data: { pharmacyId, uploadedBy: user.userId, dataType, sourceFormat,
-        fileName, checksum, requestKey, snapshotAt, recordsTotal: file.total,
+        fileName, checksum, requestKey, snapshotAt, isSynthetic, recordsTotal: file.total,
         recordsRejected: errors.some(error => error.row === 0) ? file.total : errors.length,
         recordsApplied: errors.length ? 0 : changes.length, errors, status: errors.length ? 'REJECTED' : 'APPLIED' },
         omit: { requestKey: true } });
