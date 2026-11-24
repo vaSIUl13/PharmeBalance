@@ -3,6 +3,7 @@ import type { TestContext } from 'node:test';
 import type { SignedInFixture } from './fixture';
 import { authenticator } from 'otplib';
 import { encryptMfa, verifyPassword } from '../../src/modules/auth/auth-security';
+import { testRolePermissions } from './system-notifications';
 
 export async function testRegistration(t: TestContext, fixture: SignedInFixture) {
   await t.test('registration requires reviewer approval and applies existing role and pharmacy rules', async test => {
@@ -30,6 +31,7 @@ export async function testRegistration(t: TestContext, fixture: SignedInFixture)
     assert.equal(verified.status, 204);
     const owner = cookie(verified);
     assert(owner);
+    await testRolePermissions(test, fixture, owner);
     assert.equal((await request('/users', { cookies: owner })).status, 200);
     assert.equal((await request('/users/' + accounts.superadmin.userId + '/block', { method: 'POST', cookies: admin })).status, 403);
     assert.equal((await request('/users/' + accounts.superadmin.userId, {

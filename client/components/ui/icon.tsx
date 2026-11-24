@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
 export type IconName =
-  | "alert" | "arrow_left" | "arrow_right" | "box" | "chart" | "check" | "clock" | "file" | "grid" | "logout"
+  | "alert" | "arrow_left" | "arrow_right" | "bell" | "box" | "chart" | "check" | "clock" | "file" | "grid" | "logout"
   | "pin" | "refresh" | "sliders" | "truck" | "upload" | "user" | "users" | "x";
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }) {

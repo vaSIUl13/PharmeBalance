@@ -29,6 +29,7 @@ model PharmacyDistance {
 }
 
 model Recommendation {
+  systemNotifications SystemNotification[]
   forecastId Int? @unique @map("forecast_id")
   forecast Forecast? @relation(fields: [forecastId], references: [forecastId])
   distanceKm Decimal? @db.Decimal(7,2) @map("distance_km")

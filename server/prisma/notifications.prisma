@@ -1,0 +1,16 @@
+model SystemNotification {
+  id Int @id @default(autoincrement())
+  userId Int @map("user_id")
+  recommendationId Int? @map("recommendation_id")
+  title String @db.VarChar(120)
+  message String @db.VarChar(500)
+  createdAt DateTime @default(now()) @db.Timestamptz(3) @map("created_at")
+  readAt DateTime? @db.Timestamptz(3) @map("read_at")
+  user UserAccount @relation(fields: [userId], references: [userId], onDelete: Cascade)
+  recommendation Recommendation? @relation(fields: [recommendationId], references: [recommendationId], onDelete: Cascade)
+
+  @@index([userId, id])
+  @@index([userId, readAt])
+  @@index([recommendationId])
+  @@map("system_notification")
+}

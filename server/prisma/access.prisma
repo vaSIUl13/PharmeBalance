@@ -36,6 +36,7 @@ model RolePermission {
 }
 
 model UserAccount {
+  systemNotifications SystemNotification[]
   authSessions AuthSession[]
   authChallenges AuthChallenge[]
   authMfa AuthMfa?

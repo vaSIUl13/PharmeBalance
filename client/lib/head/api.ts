@@ -1,4 +1,4 @@
-import { apiRequest, apiUpload, authRequest } from "@/lib/auth";
+import { ApiError, apiRequest, apiUpload, authRequest } from "@/lib/auth";
 import type {
   CurrentPosition, CursorPage, DailySales, ImportBatch, ImportDetail, ImportKind, Pharmacy, Principal,
   Transfer, TransferDetail, TransferResult,
@@ -11,7 +11,10 @@ export type HeadSession = { principal: Principal; pharmacy: Pharmacy | null };
 export async function loadSession(): Promise<HeadSession> {
   const principal = await authRequest<Principal>("me");
   const pharmacyId = principal.pharmacyIds[0];
-  const pharmacy = pharmacyId === undefined ? null : await apiRequest<Pharmacy>("pharmacies/" + pharmacyId);
+  const pharmacy = pharmacyId === undefined ? null : await apiRequest<Pharmacy>("pharmacies/" + pharmacyId).catch(error => {
+    if (error instanceof ApiError && (error.status === 403 || error.status === 404)) return null;
+    throw error;
+  });
   return { principal, pharmacy };
 }
 

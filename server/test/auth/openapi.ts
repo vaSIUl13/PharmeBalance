@@ -12,9 +12,12 @@ export async function verifyOpenApi(baseUrl: string) {
     assert.equal(form.properties.file.format, 'binary');
     assert(form.required.includes('pharmacyId'));
   }
-  for (const path of ['/roles', '/users', '/audit', '/pharmacies']) {
+  for (const path of ['/roles', '/roles/permissions', '/notifications/inbox', '/users', '/audit', '/pharmacies']) {
     assert.ok(spec.paths['/api/v1' + path].get);
   }
+  assert.ok(spec.paths['/api/v1/roles/{role}/permissions/{permission}'].put.requestBody);
+  assert.ok(spec.paths['/api/v1/notifications/inbox/{id}/read'].post.responses['204']);
+  assert.ok(spec.paths['/api/v1/notifications/inbox/read-through/{id}'].post.responses['204']);
   assert.ok(spec.paths['/api/v1/users'].post.requestBody);
   assert.ok(spec.paths['/api/v1/users/{id}'].patch.requestBody);
   assert.ok(spec.paths['/api/v1/pharmacies/{id}'].get);

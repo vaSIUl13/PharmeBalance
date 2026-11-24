@@ -45,6 +45,7 @@ enum EventType {
   ACCOUNT_CREATED @map("створення акаунта")
   ACCOUNT_BLOCKED @map("блокування акаунта")
   ROLE_CHANGED @map("зміна ролі")
+  ROLE_PERMISSION_CHANGED @map("зміна дозволу ролі")
   PHARMACY_ASSIGNED @map("призначення до аптеки")
   THRESHOLDS_CHANGED @map("зміна порогів")
   REFERENCE_EDITED @map("редагування довідника")

@@ -67,7 +67,7 @@ function nearestToStockout(items: CurrentPosition[]): CurrentPosition[] {
 }
 
 export function HeadDashboard() {
-  const { pharmacy } = useHeadSession();
+  const { pharmacy, principal } = useHeadSession();
   const positions = useResource(loadPositions);
   const transfers = useResource(loadTransfers);
   const imports = useResource(loadLatestImports);
@@ -79,7 +79,8 @@ export function HeadDashboard() {
   const shortages = items.filter(item => item.risk?.positionType === "SHORTAGE");
   const highRisk = shortages.filter(item => item.risk?.riskLevel === "HIGH");
   const surpluses = items.filter(item => item.risk?.positionType === "SURPLUS");
-  const incoming = (transfers.data ?? []).filter(transfer => transfer.status === "IN_PROGRESS");
+  const incoming = (transfers.data ?? []).filter(transfer =>
+    transfer.status === "IN_PROGRESS" && transfer.recipientStock.pharmacy.pharmacyId === pharmacy?.pharmacyId);
   const lastImport = imports.data?.items[0];
 
   function changed(result: string) {
@@ -126,9 +127,9 @@ export function HeadDashboard() {
                           {transfer.distanceKm !== null && <> · <span className="tabular-nums">{formatNumber(toNumber(transfer.distanceKm), 1)} км</span></>}
                         </p>
                       </div>
-                      <button type="button" className={buttonClasses.primary} onClick={() => setReceiving(transfer)}>
+                      {principal.permissions.includes("RECEIPT_CONFIRM") && <button type="button" className={buttonClasses.primary} onClick={() => setReceiving(transfer)}>
                         <Icon name="check" size={16} />Підтвердити отримання
-                      </button>
+                      </button>}
                     </li>
                   ))}
                 </ul>

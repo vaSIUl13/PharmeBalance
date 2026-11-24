@@ -9,26 +9,38 @@ import { loadTransfer } from "@/lib/logist/api";
 import { Icon } from "@/components/ui/icon";
 import { buttonClasses, Card, EmptyState, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
 import { DispatchDialog } from "./dispatch-dialog";
+import { ReceiveDialog } from "@/components/head/receive-dialog";
 import { TripStatus } from "./trip-parts";
 import { TripRoute } from "./trip-route";
 
-export function TransferView({ id }: { id: number }) {
+type Viewer = { role: "logist" } | { role: "manager" } | { role: "head"; receiverPharmacy?: number };
+const defaultViewer = { role: "logist" } as const;
+const backLinks = {
+  logist: { href: "/logist/queue", label: "До черги" },
+  manager: { href: "/manager/recommendations", label: "До рекомендацій" },
+  head: { href: "/head/moves", label: "До переміщень" },
+} as const;
+
+export function TransferView({ id, viewer = defaultViewer }: { id: number; viewer?: Viewer }) {
   const load = useCallback(() => loadTransfer(id), [id]);
   const trip = useResource(load);
   const [dispatching, setDispatching] = useState(false);
+  const [receiving, setReceiving] = useState(false);
   const [message, setMessage] = useState("");
 
   function changed(result: string) {
     setDispatching(false);
+    setReceiving(false);
     setMessage(result);
     trip.reload();
   }
 
   const missing = trip.error instanceof ApiError && trip.error.status === 404;
+  const back = backLinks[viewer.role];
 
   return (
     <>
-      <Link href="/logist/queue" className={buttonClasses.secondary + " w-fit"}><Icon name="arrow_left" size={14} />До черги</Link>
+      <Link href={back.href} className={buttonClasses.secondary + " w-fit"}><Icon name="arrow_left" size={14} />{back.label}</Link>
       {message && <Notice tone="success">{message}</Notice>}
       {missing
         ? <Card><EmptyState title="Рейс не знайдено" hint="Він недоступний для вашого облікового запису" /></Card>
@@ -53,11 +65,17 @@ export function TransferView({ id }: { id: number }) {
                           <div className="flex justify-between gap-3"><dt className="text-[#64748b]">Пріоритет</dt><dd className="font-medium tabular-nums">{data.priority}</dd></div>
                         </dl>
                       </Card>
-                      {data.status === "CONFIRMED" && (
+                      {data.status === "CONFIRMED" && viewer.role === "logist" && (
                         <button type="button" className={buttonClasses.primary + " w-full"} onClick={() => setDispatching(true)}>
                           <Icon name="truck" size={16} />Розпочати переміщення
                         </button>
                       )}
+                      {data.status === "IN_PROGRESS" && viewer.role === "head" &&
+                        viewer.receiverPharmacy === data.recipientStock.pharmacy.pharmacyId && (
+                          <button type="button" className={buttonClasses.primary + " w-full"} onClick={() => setReceiving(true)}>
+                            <Icon name="check" size={16} />Підтвердити отримання
+                          </button>
+                        )}
                       {data.status === "IN_PROGRESS" && (
                         <Notice tone="warning">Очікує підтвердження отримання завідувачем аптеки-реципієнта ({data.recipientStock.pharmacy.name}).</Notice>
                       )}
@@ -66,6 +84,7 @@ export function TransferView({ id }: { id: number }) {
                     </div>
                   </div>
                   {dispatching && <DispatchDialog trip={data} onClose={() => setDispatching(false)} onChanged={changed} />}
+                  {receiving && <ReceiveDialog transfer={data} onClose={() => setReceiving(false)} onChanged={changed} />}
                 </>
               );
             }}

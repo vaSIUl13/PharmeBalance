@@ -27,7 +27,7 @@ export type ReportTimeline = {
 export type DecisionCommand = "CONFIRM" | "REJECT" | "CANCEL";
 
 export type AuditEventType =
-  | "LOGIN" | "ACCOUNT_CREATED" | "ACCOUNT_BLOCKED" | "ROLE_CHANGED" | "PHARMACY_ASSIGNED"
+  | "LOGIN" | "ACCOUNT_CREATED" | "ACCOUNT_BLOCKED" | "ROLE_CHANGED" | "ROLE_PERMISSION_CHANGED" | "PHARMACY_ASSIGNED"
   | "THRESHOLDS_CHANGED" | "REFERENCE_EDITED" | "REPORT_EXPORTED";
 
 export type AuditEntry = {
