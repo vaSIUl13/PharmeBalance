@@ -55,15 +55,16 @@ test('transfer visibility depends on role, grant, direction and assignment', () 
     status: { in: ['CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] }, donorStock: { pharmacy: assigned },
   });
   assert.deepEqual(transferScope({ role: 'head', userId: 17, permissions: ['RECEIPT_CONFIRM', 'PHARMACY_VIEW'] }), {
-    status: { in: ['IN_PROGRESS', 'COMPLETED'] }, recipientStock: { pharmacy: assigned },
+    status: { in: ['IN_PROGRESS', 'COMPLETED'] },
+    OR: [{ recipientStock: { pharmacy: assigned } }, { donorStock: { pharmacy: assigned } }],
   });
-  for (const [role, grant] of [['logist', 'RECEIPT_CONFIRM'], ['head', 'TRANSFER_VIEW'], ['manager', 'TRANSFER_VIEW']]) {
+  for (const [role, grant] of [['logist', 'RECEIPT_CONFIRM'], ['manager', 'TRANSFER_VIEW']]) {
     assert.deepEqual(transferScope({ role, userId: 17, permissions: ['PHARMACY_VIEW', grant] }), {
       recommendationId: { in: [] },
     });
   }
-  assert.deepEqual(transferScope({ role: 'head', userId: 17, permissions: ['RECEIPT_CONFIRM'] }).recipientStock, {
-    pharmacy: { pharmacyId: { in: [] } },
+  assert.deepEqual(transferScope({ role: 'head', userId: 17, permissions: ['RECEIPT_CONFIRM'] }), {
+    recommendationId: { in: [] },
   });
 });
 

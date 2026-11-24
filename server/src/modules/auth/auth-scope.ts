@@ -17,10 +17,10 @@ export function transferScope(principal: Scope): Prisma.RecommendationWhereInput
       donorStock: { pharmacy: pharmacyScope(principal) },
     };
   }
-  if (principal.role === 'head' && principal.permissions.includes('RECEIPT_CONFIRM')) {
+  if (principal.role === 'head' && principal.permissions.includes('PHARMACY_VIEW')) {
     return {
       status: { in: ['IN_PROGRESS', 'COMPLETED'] },
-      recipientStock: { pharmacy: pharmacyScope(principal) },
+      OR: [{ recipientStock: { pharmacy: pharmacyScope(principal) } }, { donorStock: { pharmacy: pharmacyScope(principal) } }],
     };
   }
   return { recommendationId: { in: [] } };

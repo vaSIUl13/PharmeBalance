@@ -35,6 +35,8 @@ export type RoleInfo = {
   permissions: { code: string; name: string }[];
 };
 
+export type RolePermission = { code: string; name: string; grantableRoles: RoleCode[] };
+
 export type Drug = {
   drugId: number;
   sku: string;
@@ -59,7 +61,7 @@ export type CreatePharmacyInput = {
 };
 
 export type AuditEventType =
-  | "LOGIN" | "ACCOUNT_CREATED" | "ACCOUNT_BLOCKED" | "ROLE_CHANGED" | "PHARMACY_ASSIGNED"
+  | "LOGIN" | "ACCOUNT_CREATED" | "ACCOUNT_BLOCKED" | "ROLE_CHANGED" | "ROLE_PERMISSION_CHANGED" | "PHARMACY_ASSIGNED"
   | "THRESHOLDS_CHANGED" | "REFERENCE_EDITED" | "REPORT_EXPORTED";
 
 export type AuditEntry = {

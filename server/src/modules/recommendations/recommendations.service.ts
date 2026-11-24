@@ -7,11 +7,18 @@ import { lockUser } from '../users/pharmacy-assignments';
 import { activeTransfers, generateRecommendations } from './generate';
 import { transferLimit } from './donor-selection';
 import { roadRoute } from './road-route';
+import { notifyUsers } from '../notifications/inbox.service';
+import { transferAudience } from '../notifications/transfer-audience';
 
 export const commands = ['CONFIRM', 'REJECT', 'CANCEL', 'DISPATCH', 'RECEIVE'] as const;
 export type Command = typeof commands[number];
 const stock = { include: { pharmacy: true, drug: true } } satisfies Prisma.StockItemDefaultArgs;
 const positions = { donorStock: stock, recipientStock: stock } satisfies Prisma.RecommendationInclude;
+const transferTitles: Record<string, string> = {
+  CONFIRM: 'Новий рейс готовий до відправлення', DISPATCH: 'Доставку розпочато',
+  RECEIVE: 'Доставку завершено', CANCEL: 'Рейс скасовано', REJECT: 'Рекомендацію відхилено',
+  STALE: 'Рекомендація втратила актуальність',
+};
 
 @Injectable()
 export class RecommendationsService {
@@ -65,7 +72,8 @@ export class RecommendationsService {
       await lockUser(tx, user.userId);
       await tx.$queryRaw`SELECT recommendation_id FROM recommendation WHERE recommendation_id = ${id} FOR UPDATE`;
       const record = await tx.recommendation.findFirst({
-        where: { AND: [{ recommendationId: id }, transferScope(user)] },
+        where: { AND: [{ recommendationId: id }, transferScope(user), ...(command === 'RECEIVE' && user.role === 'head'
+          ? [{ recipientStock: { pharmacy: { userPharmacyRows: { some: { userId: user.userId, unassignedAt: null } } } } }] : [])] },
         include: { ...positions, forecast: true },
       });
       if (!record) throw new NotFoundException();
@@ -102,6 +110,17 @@ export class RecommendationsService {
             sku: record.donorStock.drug.sku, drugName: record.donorStock.drug.name,
           } } }),
         } });
+        const manager = await tx.recommendationAction.findFirst({
+          where: { recommendationId: id, actionType: { code: 'CONFIRM' } }, select: { userId: true },
+        });
+        const { where } = transferAudience({
+          code: transition.code, actorId: user.userId, managerId: manager?.userId, internal: true,
+          donorId: record.donorStock.pharmacyId, recipientId: record.recipientStock.pharmacyId,
+        });
+        await notifyUsers(tx, where, {
+          recommendationId: id, title: transferTitles[transition.code],
+          message: `№${id} · ${record.donorStock.drug.name} · ${record.donorStock.pharmacy.name} → ${record.recipientStock.pharmacy.name}`,
+        });
         return { recommendationId: id, status: transition.toStatus, replayed: false };
       };
       if (command === 'CONFIRM' && donor && recipient) {

@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { EmailService } from './email.service';
 import { transferEmail } from './transfer-email';
+import { transferAudience } from './transfer-audience';
 
 const context = { action: { include: { actionType: true, recommendation: {
   include: { donorStock: { include: { pharmacy: { select: { isSynthetic: true } } } }, recipientStock: true, recommendationActionRows: {
@@ -10,25 +11,13 @@ const context = { action: { include: { actionType: true, recommendation: {
   } },
 } } } } satisfies Prisma.EmailEventInclude;
 type Event = Prisma.EmailEventGetPayload<{ include: typeof context }>;
-const recipientRoles: Record<string, ('logist' | 'head' | 'manager')[]> = {
-  CONFIRM: ['logist'], DISPATCH: ['head'], RECEIVE: ['manager'], REJECT: ['manager'], CANCEL: ['logist', 'manager'],
-};
-
-function audience(event: Event): Prisma.UserAccountWhereInput {
+function audience(event: Event) {
   const { action } = event;
   const transfer = action.recommendation;
-  const code = action.actionType.code;
-  const match = (role: string, permissions: string[], pharmacyId?: number, userId?: number): Prisma.UserAccountWhereInput => ({
-    userId, ...(pharmacyId === undefined ? {} : { userPharmacyRows: { some: { pharmacyId, unassignedAt: null } } }),
-    role: { code: role, AND: permissions.map(code => ({ rolePermissionRows: { some: { permission: { code } } } })) },
+  return transferAudience({
+    code: action.actionType.code, actorId: action.userId, managerId: transfer.recommendationActionRows[0]?.userId,
+    donorId: transfer.donorStock.pharmacyId, recipientId: transfer.recipientStock.pharmacyId,
   });
-  const logist = match('logist', ['PHARMACY_VIEW', 'TRANSFER_VIEW', 'TRANSFER_DISPATCH'], transfer.donorStock.pharmacyId);
-  const head = match('head', ['PHARMACY_VIEW', 'RECEIPT_CONFIRM'], transfer.recipientStock.pharmacyId);
-  const owner = code === 'REJECT' ? action.userId : transfer.recommendationActionRows[0]?.userId;
-  const manager = owner === undefined ? { userId: { in: [] } } : match('manager', ['NETWORK_VIEW'], undefined, owner);
-  const rules = { logist, head, manager } satisfies Record<string, Prisma.UserAccountWhereInput>;
-  const roles = recipientRoles[code] ?? [];
-  return { isActive: true, OR: roles.map(role => rules[role]) };
 }
 
 const maxAttempts = 5;
@@ -83,7 +72,8 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         WHERE prepared_at IS NULL ORDER BY action_id LIMIT 1 FOR UPDATE SKIP LOCKED`;
       if (!claim) return false;
       const event = await tx.emailEvent.findUniqueOrThrow({ where: claim, include: context });
-      const users = await tx.userAccount.findMany({ where: audience(event), select: {
+      const { where, roles } = audience(event);
+      const users = await tx.userAccount.findMany({ where, select: {
         userId: true, email: true, role: { select: { code: true } },
       },
         orderBy: { userId: 'asc' } });
@@ -99,7 +89,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         deliveries.push({ actionId: claim.actionId, userId: user.userId });
       }
       if (deliveries.length) await tx.emailDelivery.createMany({ data: deliveries });
-      const missingRoles = (recipientRoles[event.action.actionType.code] ?? []).filter(role => !foundRoles.has(role));
+      const missingRoles = roles.filter(role => !foundRoles.has(role));
       await tx.emailEvent.update({ where: claim, data: { preparedAt: new Date(), recipientCount: deliveries.length, missingRoles } });
       return true;
     });
@@ -114,7 +104,7 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         ORDER BY next_attempt_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`;
       if (!claim) return false;
       const delivery = await tx.emailDelivery.findUniqueOrThrow({ where: claim, include: { event: { include: context } } });
-      const user = await tx.userAccount.findFirst({ where: { AND: [{ userId: delivery.userId }, audience(delivery.event)] },
+      const user = await tx.userAccount.findFirst({ where: { AND: [{ userId: delivery.userId }, audience(delivery.event).where] },
         select: { email: true } });
       if (!user || !deliverable(user.email.trim(), delivery.event)) {
         await tx.emailDelivery.update({ where: claim, data: { skippedAt: new Date(), lastError: 'RECIPIENT_UNAVAILABLE' } });

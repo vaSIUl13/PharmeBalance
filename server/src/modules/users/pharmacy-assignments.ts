@@ -1,7 +1,8 @@
 import type { Prisma } from '@prisma/client';
 
 export async function lockUser(tx: Prisma.TransactionClient, userId: number) {
-  await tx.$queryRaw`SELECT user_id FROM user_account WHERE user_id = ${userId} FOR UPDATE`;
+  // Keep user updates serialized while allowing foreign-key checks on the account.
+  await tx.$queryRaw`SELECT user_id FROM user_account WHERE user_id = ${userId} FOR NO KEY UPDATE`;
 }
 
 export async function endAssignments(tx: Prisma.TransactionClient, actor: number, userId: number, role: string) {

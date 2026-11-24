@@ -63,17 +63,18 @@ export async function testOutbox(t: TestContext, context: TransferFixture, trans
           if (!(await Promise.all([first.processOne(), restarted.processOne()])).some(Boolean)) break;
         }
         const sent = await db.emailDelivery.findMany({ where: { actionId: { in: events.map(e => e.actionId) } } });
-        assert.equal(sent.length, 3);
+        assert.equal(sent.length, 5);
         assert(sent.every(delivery => delivery.acceptedAt));
         const noRecipient = await db.emailEvent.findUniqueOrThrow({ where: { actionId: missing.actionId } });
-        assert.deepEqual(noRecipient.missingRoles, ['head']);
-        assert.equal(noRecipient.recipientCount, 0);
+        assert.deepEqual(noRecipient.missingRoles, ['manager']);
+        assert.equal(noRecipient.recipientCount, 1);
         assert.deepEqual(sent.map(delivery => delivery.userId).sort(),
-          [accounts.logist.userId, accounts.head.userId, accounts.manager.userId].sort());
+          [accounts.logist.userId, accounts.head.userId, accounts.donorHead.userId,
+            accounts.manager.userId, accounts.manager.userId].sort());
         assert.equal((await db.emailDelivery.findUniqueOrThrow({ where: { id: prior.id } })).attempts, 1);
         const inbox = await (await fetch('http://127.0.0.1:8025/api/v1/messages?limit=50')).json();
         const transferMessages = inbox.messages.filter((message: { Subject: string; ID: string }) => message.Subject.includes('#' + id + ' ·'));
-        assert.equal(transferMessages.length, 3);
+        assert.equal(transferMessages.length, 5);
         const letter = await (await fetch('http://127.0.0.1:8025/api/v1/message/' + transferMessages[0].ID)).json();
         assert.match(letter.HTML, /<table/);
         assert.match(letter.Text, new RegExp(sku));

@@ -18,7 +18,7 @@ function StatusBadge({ status }: { status: TransferStatus }) {
 }
 
 export function Transfers() {
-  const { pharmacy } = useHeadSession();
+  const { pharmacy, principal } = useHeadSession();
   const transfers = useResource(loadTransfers);
   const [status, setStatus] = useState<"all" | TransferStatus>("all");
   const [receiving, setReceiving] = useState<TransferDetail | null>(null);
@@ -34,14 +34,15 @@ export function Transfers() {
   }
 
   function receiveAction(item: TransferDetail) {
-    return item.status === "IN_PROGRESS"
+    return item.status === "IN_PROGRESS" && item.recipientStock.pharmacy.pharmacyId === pharmacy?.pharmacyId &&
+      principal.permissions.includes("RECEIPT_CONFIRM")
       ? <button type="button" className={buttonClasses.primary} onClick={() => setReceiving(item)}><Icon name="check" size={14} />Підтвердити отримання</button>
       : null;
   }
 
   return (
     <>
-      <PageHeader title="Вхідні переміщення" subtitle={pharmacy ? pharmacy.name : undefined} />
+      <PageHeader title="Переміщення аптеки" subtitle={pharmacy ? pharmacy.name : undefined} />
       {message && <Notice tone="success">{message}</Notice>}
 
       <Card>

@@ -1,6 +1,6 @@
 import { apiRequest, authRequest } from "@/lib/auth";
 import type { Principal } from "@/lib/head/types";
-import type { AdminPharmacy, AdminUser, AuditPage, CreatePharmacyInput, CreateUserInput, DrugPage, ExternalMapPage, ExternalPharmacy, RoleCode, RoleInfo } from "./types";
+import type { AdminPharmacy, AdminUser, AuditPage, CreatePharmacyInput, CreateUserInput, DrugPage, ExternalMapPage, ExternalPharmacy, RoleCode, RoleInfo, RolePermission } from "./types";
 
 const pageLimit = 40;
 
@@ -50,6 +50,15 @@ export function loadExternalInBox(box: { south: number; west: number; north: num
 
 export function loadRoles(): Promise<RoleInfo[]> {
   return apiRequest<RoleInfo[]>("roles");
+}
+
+export async function loadRights() {
+  const [roles, permissions] = await Promise.all([loadRoles(), apiRequest<RolePermission[]>("roles/permissions")]);
+  return { roles, permissions };
+}
+
+export function setRolePermission(role: RoleCode, code: string, granted: boolean): Promise<{ changed: boolean }> {
+  return apiRequest("roles/" + role + "/permissions/" + encodeURIComponent(code), "PUT", { granted });
 }
 
 export function loadDrugs(query = "", after?: number): Promise<DrugPage> {

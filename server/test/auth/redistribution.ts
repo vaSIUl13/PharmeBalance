@@ -81,17 +81,24 @@ export async function testRedistribution(t: TestContext, context: TransferFixtur
     const id = transfer.recommendationId;
     assert.equal((await act('CONFIRM', manager, {}, id)).status, 200);
     assert.equal((await act('RECEIVE', head, { quantity: 100 }, id)).status, 404);
+    const headAccount = await db.userAccount.findUniqueOrThrow({ where: { userId: accounts.head.userId } });
+    accounts.donorHead = await db.userAccount.create({ data: { login: 'donor-' + run, email: 'donor-' + run + '@example.invalid',
+      firstName: 'Donor', lastName: 'Head', roleId: headAccount.roleId, passwordHash: headAccount.passwordHash } });
+    await db.userPharmacy.create({ data: { userId: accounts.donorHead.userId, pharmacyId: donorPharmacy } });
+    const donorSession = cookie(await login('donorHead'));
     const initial = (await current()).slice(0, 2).map(s => s.quantity);
     assert.deepEqual((await Promise.all([act('DISPATCH', logist, {}, id), act('DISPATCH', logist, {}, id)])).map(r => r.status), [200, 200]);
     assert.deepEqual((await current()).slice(0, 2).map(s => s.quantity), initial);
     assert.equal((await act('CANCEL', manager, {}, id)).status, 409);
     assert.equal((await act('RECEIVE', head, { quantity: 99 }, id)).status, 400);
     assert.equal((await act('RECEIVE', logist, { quantity: 100 }, id)).status, 403);
-    const headAccount = await db.userAccount.findUniqueOrThrow({ where: { userId: accounts.head.userId } });
-    accounts.donorHead = await db.userAccount.create({ data: { login: 'donor-' + run, email: 'donor-' + run + '@example.invalid',
-      firstName: 'Donor', lastName: 'Head', roleId: headAccount.roleId, passwordHash: headAccount.passwordHash } });
-    await db.userPharmacy.create({ data: { userId: accounts.donorHead.userId, pharmacyId: donorPharmacy } });
-    const donorSession = cookie(await login('donorHead'));
+    const inboxRows = await db.systemNotification.findMany({ where: { recommendationId: id }, orderBy: { id: 'asc' } });
+    assert.equal(inboxRows.length, 4);
+    assert.equal(inboxRows[0].userId, accounts.logist.userId);
+    assert.deepEqual(new Set(inboxRows.slice(1).map(row => row.userId)),
+      new Set([accounts.manager.userId, accounts.head.userId, accounts.donorHead.userId]));
+    assert.equal((await request('/recommendations/' + id, { cookies: donorSession })).status, 200);
+    assert.equal((await request('/recommendations/' + id, { cookies: context.admin })).status, 404);
     assert.equal((await act('RECEIVE', donorSession, { quantity: 100 }, id)).status, 404);
     const sku = (await db.drug.findUniqueOrThrow({ where: { drugId: donor.drugId } })).sku;
     const snapshotAt = new Date().toISOString();
@@ -108,6 +115,20 @@ export async function testRedistribution(t: TestContext, context: TransferFixtur
     await new Promise(resolve => setTimeout(resolve, 5));
     assert.deepEqual((await Promise.all([act('RECEIVE', head, { quantity: 100 }, id),
       act('RECEIVE', head, { quantity: 100 }, id), importStock()])).map(r => r.status), [200, 200, 422]);
+    const completed = await db.systemNotification.findMany({
+      where: { recommendationId: id, title: 'Доставку завершено' }, select: { userId: true },
+    });
+    assert.equal(completed.length, 4);
+    assert.deepEqual(new Set(completed.map(row => row.userId)),
+      new Set([accounts.manager.userId, accounts.logist.userId, accounts.head.userId, accounts.donorHead.userId]));
+    const managerInbox = await request('/notifications/inbox', { cookies: manager });
+    assert.equal(managerInbox.status, 200);
+    const inbox: { items: { id: number; recommendationId: number | null; title: string; readAt: string | null }[] } =
+      await managerInbox.json();
+    const notices = inbox.items.filter(item => item.recommendationId === id);
+    assert.deepEqual(notices.map(item => item.title), ['Доставку завершено', 'Доставку розпочато']);
+    assert(notices.every(item => item.readAt === null));
+    assert.equal((await post('/notifications/inbox/' + notices[0].id + '/read', manager)).status, 204);
     assert.deepEqual((await current()).slice(0, 2).map(s => [s.quantity, s.reservedQuantity]),
       [[recipient.quantity + 100, 0], [donor.quantity - 100, 0]]);
     const positions = await request('/stocks/current', { cookies: head });

@@ -16,7 +16,12 @@
 # next.js
 /.next/
 /out/
-public/
+/public/*
+!/public/assets/
+/public/assets/*
+!/public/assets/icons/
+/public/assets/icons/*
+!/public/assets/icons/bell.svg
 
 # production
 /build

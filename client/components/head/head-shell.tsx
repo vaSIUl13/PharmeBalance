@@ -8,6 +8,7 @@ import { ApiError, authRequest } from "@/lib/auth";
 import { loadSession } from "@/lib/head/api";
 import { useResource } from "@/lib/head/use-resource";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { NotificationInbox } from "@/components/ui/notification-inbox";
 import { HeadSessionProvider } from "./head-session";
 import { ErrorState, LoadingState } from "./ui";
 
@@ -58,15 +59,13 @@ export function HeadShell({ children }: { children: ReactNode }) {
     );
   }
 
-  if (session.principal.role !== "head" || !session.pharmacy) {
+  if (session.principal.role !== "head") {
     return (
       <main className="grid min-h-svh place-items-center bg-[#f8faf9] p-6 text-[#0f172a]">
         <div className="w-full max-w-md space-y-3 rounded-xl border border-[#e2e8e5] bg-white p-6">
           <h1 className="text-lg font-semibold">Розділ недоступний</h1>
           <p className="text-sm text-[#475569]">
-            {session.principal.role === "head"
-              ? "До вашого облікового запису не призначено аптеку. Зверніться до адміністратора."
-              : "Цей розділ призначений для завідувача аптеки."}
+            Цей розділ призначений для завідувача аптеки.
           </p>
           <Link className="text-sm text-[#0f766e] underline" href="/account">До облікового запису</Link>
         </div>
@@ -115,13 +114,17 @@ export function HeadShell({ children }: { children: ReactNode }) {
           <header className="sticky top-0 z-10 flex min-h-14 items-center gap-3 border-b border-[#e2e8e5] bg-white px-4 md:px-6">
             <Image className="md:hidden" src="/assets/icons/logo.svg" alt="" width={28} height={28} />
             <p className="text-base font-semibold">{title}</p>
-            <p className="ml-auto min-w-0 truncate text-xs text-[#64748b] md:text-sm">{pharmacy.name}</p>
+            <p className="ml-auto min-w-0 truncate text-xs text-[#64748b] md:text-sm">{pharmacy?.name}</p>
+            <NotificationInbox role={principal.role} />
             <button type="button" onClick={signOut} disabled={signingOut} aria-label="Вийти"
               className="grid size-9 place-items-center rounded-md border border-[#e2e8e5] md:hidden">
               <Icon name="logout" size={16} />
             </button>
           </header>
-          <main className="mx-auto w-full max-w-[1200px] space-y-4 p-4 md:p-6">{signOutError && <p role="alert">Не вдалося вийти. Спробуйте ще раз.</p>}{children}</main>
+          <main className="mx-auto w-full max-w-[1200px] space-y-4 p-4 md:p-6">
+            {signOutError && <p role="alert">Не вдалося вийти. Спробуйте ще раз.</p>}
+            {pharmacy ? children : <ErrorState message="Немає доступу до призначеної аптеки." onRetry={reload} />}
+          </main>
         </div>
 
         <nav aria-label="Основна навігація" className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-4 border-t border-[#e2e8e5] bg-white md:hidden">
