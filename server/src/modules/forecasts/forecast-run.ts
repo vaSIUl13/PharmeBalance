@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { basePolicy, calculate, classifyPharmacy, dayMs, modelVersion, type DailySale, type Policy } from './forecast-model';
 import { notifyForecastChanges } from './forecast-notifications';
 
-export async function publishSnapshot(tx: Prisma.TransactionClient, asOf: Date, synthetic: boolean, policy: Policy) {
+export async function publishSnapshot(tx: Prisma.TransactionClient, asOf: Date, synthetic: boolean, policy: Policy, capturedAt?: Date) {
   const start = new Date(+asOf - (policy.historyDays - 1) * dayMs);
   const [input] = await tx.$queryRaw<{ stockKey: string | null; salesKey: string | null }[]>`
     WITH eligible AS (
@@ -26,7 +26,7 @@ export async function publishSnapshot(tx: Prisma.TransactionClient, asOf: Date, 
     orderBy: [{ asOf: 'desc' }, { id: 'desc' }] });
   const newer = await tx.forecastRun.findFirst({ where: { synthetic, asOf: { gt: asOf } }, select: { id: true } });
   const identity = { asOf, synthetic, version: fingerprint + '@' + (latest?.id ?? 0) };
-  const inserted = await tx.forecastRun.createMany({ data: { ...identity, policy }, skipDuplicates: true });
+  const inserted = await tx.forecastRun.createMany({ data: { ...identity, policy, createdAt: capturedAt }, skipDuplicates: true });
   const run = await tx.forecastRun.findUniqueOrThrow({ where: { asOf_synthetic_version: identity } });
   if (!inserted.count) return { runId: run.id, reused: true };
   const pharmacies = await tx.pharmacy.findMany({ where: { isActive: true, isSynthetic: synthetic }, select: { pharmacyId: true } });
@@ -50,7 +50,8 @@ export async function publishSnapshot(tx: Prisma.TransactionClient, asOf: Date, 
     const results = stocks.map(stock => calculate(stock, grouped.get(stock.stockId) ?? [], asOf, policy));
     classifyPharmacy(results, policy);
     const forecasts = await tx.forecast.createManyAndReturn({
-      data: results.map(({ turnover, daysToStockout, ...r }) => ({ ...r, runId: run.id, modelVersion, horizonDays: policy.horizonDays })),
+      data: results.map(({ turnover, daysToStockout, ...r }) => ({ ...r, runId: run.id, modelVersion,
+        horizonDays: policy.horizonDays, createdAt: capturedAt })),
       select: { forecastId: true, stockId: true },
     });
     const ids = new Map(forecasts.map(f => [f.stockId, f.forecastId]));

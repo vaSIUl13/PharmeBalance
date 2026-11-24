@@ -31,6 +31,12 @@ export async function testRegistration(t: TestContext, fixture: SignedInFixture)
     assert.equal(verified.status, 204);
     const owner = cookie(verified);
     assert(owner);
+    assert.equal((await request('/demo-day', { cookies: admin })).status, 403);
+    assert.equal((await request('/demo-day', { method: 'POST', cookies: admin, body: { day: '2026-11-24' } })).status, 403);
+    const demo = await request('/demo-day', { cookies: owner });
+    assert.equal(demo.status, 200);
+    assert.equal((await demo.json()).enabled, false);
+    assert.equal((await request('/demo-day', { method: 'POST', cookies: owner, body: { day: '2026-11-24' } })).status, 403);
     await testRolePermissions(test, fixture, owner);
     assert.equal((await request('/users', { cookies: owner })).status, 200);
     assert.equal((await request('/users/' + accounts.superadmin.userId + '/block', { method: 'POST', cookies: admin })).status, 403);
