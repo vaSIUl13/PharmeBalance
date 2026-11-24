@@ -5,6 +5,8 @@ import { AuthRedisService } from '../auth/auth-redis.service';
 import { hashPassword } from '../auth/auth-security';
 import type { Principal } from '../auth/auth.service';
 import { EmailService } from '../notifications/email.service';
+import { administrators } from '../notifications/business-notifications';
+import { notifyUsers } from '../notifications/inbox.service';
 import { type CreateUserDto, parseAccess, parseCreate } from './dto/user-input';
 import { lockUser } from './pharmacy-assignments';
 import { UsersService } from './users.service';
@@ -63,8 +65,15 @@ export class RegistrationService {
     if (existing) return;
     const passwordHash = await hashPassword(password);
     try {
-      const { id } = await this.db.registrationRequest.create({
-        data: { ...profile, requestedRole: role, passwordHash }, select: { id: true },
+      const { id } = await this.db.$transaction(async tx => {
+        const request = await tx.registrationRequest.create({
+          data: { ...profile, requestedRole: role, passwordHash }, select: { id: true },
+        });
+        await notifyUsers(tx, administrators, {
+          title: 'Нова заявка на реєстрацію',
+          message: `Запитана роль: ${role}. Рішення приймає суперадміністратор.`,
+        });
+        return request;
       });
       if (reviewer && this.email.enabled) void this.notify(reviewer, id).catch(() => this.logger.warn('Registration notification failed'));
     } catch (error) {
@@ -132,6 +141,10 @@ export class RegistrationService {
         });
         await tx.authAuditEvent.create({
           data: { userId: actor.userId, event: approved ? 'REGISTRATION_APPROVED' : 'REGISTRATION_REJECTED' },
+        });
+        await notifyUsers(tx, administrators, {
+          title: approved ? 'Заявку на реєстрацію схвалено' : 'Заявку на реєстрацію відхилено',
+          message: `Запитана роль: ${request.requestedRole}.`,
         });
         return { email: request.email, role: request.requestedRole };
       });

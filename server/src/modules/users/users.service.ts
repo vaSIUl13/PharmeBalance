@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { hashPassword } from '../auth/auth-security';
 import { EmailService } from '../notifications/email.service';
+import { administrators, notifyPharmacy } from '../notifications/business-notifications';
+import { notifyUsers } from '../notifications/inbox.service';
 import type { CreateUserDto, UserAccessDto } from './dto/user-input';
 import { endAssignments, lockUser } from './pharmacy-assignments';
 
@@ -71,6 +73,9 @@ export class UsersService {
     await tx.auditLog.create({
       data: { userId: actor, targetUserId: user.userId, eventType: 'ACCOUNT_CREATED', details: 'Created account with role ' + role },
     });
+    await notifyUsers(tx, { OR: [administrators, { userId: user.userId }] }, {
+      title: 'Створено обліковий запис', message: `${user.login} · роль: ${role}.`,
+    });
     await this.assign(tx, actor, user.userId, role, pharmacyId);
     return user;
   }
@@ -88,6 +93,9 @@ export class UsersService {
         await endAssignments(tx, actor, userId, user.role.code);
         await tx.userAccount.update({ where: { userId }, data: { role: { connect: { code: role } } } });
         await tx.auditLog.create({ data: { userId: actor, targetUserId: userId, eventType: 'ROLE_CHANGED', details: user.role.code + ' -> ' + role } });
+        await notifyUsers(tx, { OR: [administrators, { userId }] }, {
+          title: 'Змінено роль користувача', message: `${user.login} · ${user.role.code} → ${role}.`,
+        });
       }
       await this.assign(tx, actor, userId, role, access.pharmacyId);
       return { ...user, role: { code: role } };
@@ -112,10 +120,16 @@ export class UsersService {
       await tx.userPharmacy.upsert({ where: { userId_pharmacyId: { userId, pharmacyId } }, create: { userId, pharmacyId },
         update: { assignedAt: new Date(), unassignedAt: null } });
       await tx.auditLog.create({ data: { ...audit, eventType: 'PHARMACY_ASSIGNED', details: 'Assigned to pharmacy ' + pharmacyId } });
+      await notifyPharmacy(tx, pharmacyId, 'Призначення до аптеки', `Працівник №${userId} · роль: ${role}.`,
+        { includeLogistics: true, userId });
     }
     if (role === 'head') {
       const changed = await tx.pharmacy.updateMany({ where: { pharmacyId, isActive: false }, data: { isActive: true } });
-      if (changed.count) await tx.auditLog.create({ data: { ...audit, eventType: 'REFERENCE_EDITED', details: 'Activated pharmacy ' + pharmacyId } });
+      if (changed.count) {
+        await tx.auditLog.create({ data: { ...audit, eventType: 'REFERENCE_EDITED', details: 'Activated pharmacy ' + pharmacyId } });
+        await notifyPharmacy(tx, pharmacyId, 'Аптеку активовано', 'Аптека доступна для роботи в мережі.',
+          { includeLogistics: true });
+      }
     }
   }
 }

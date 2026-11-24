@@ -2,6 +2,7 @@ import { isAdministrativeRole } from '../auth/administrative-role';
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { notifyPharmacy } from '../notifications/business-notifications';
 import { pharmacyScope } from '../auth/auth-scope';
 import type { Principal } from '../auth/auth.service';
 import { type CreateStockDto, type StockThresholdsDto, validateLevels } from './dto/stock-input';
@@ -77,11 +78,12 @@ export class StocksService {
         const pharmacy = await tx.pharmacy.findFirst({ where: { AND: [this.scope(user), { pharmacyId }] },
           select: { pharmacyId: true } });
         if (!pharmacy) throw new NotFoundException('Managed pharmacy not found');
-        const drug = await tx.drug.findUnique({ where: { sku }, select: { drugId: true } });
+        const drug = await tx.drug.findUnique({ where: { sku }, select: { drugId: true, name: true } });
         if (!drug) throw new NotFoundException('SKU not found');
         const stock = await tx.stockItem.create({ data: { pharmacyId, drugId: drug.drugId, ...levels } });
         await tx.auditLog.create({ data: { userId: user.userId, stockId: stock.stockId, eventType: 'THRESHOLDS_CHANGED',
           details: `Created stock with quantity ${stock.quantity}, MSL ${stock.msl}, Max ${stock.maxLevel}` } });
+        await notifyPharmacy(tx, pharmacyId, 'Додано позицію запасу', `${drug.name} (${sku}) · залишок ${stock.quantity}.`);
         return stock;
       });
     } catch (error) {
@@ -104,6 +106,9 @@ export class StocksService {
       const updated = await tx.stockItem.update({ where: { stockId }, data: { msl, maxLevel, updatedAt: new Date() } });
       await tx.auditLog.create({ data: { stockId, userId: user.userId, eventType: 'THRESHOLDS_CHANGED',
         details: `MSL ${stock.msl} -> ${msl}, Max ${stock.maxLevel} -> ${maxLevel}` } });
+      const drug = await tx.drug.findUniqueOrThrow({ where: { drugId: stock.drugId }, select: { name: true, sku: true } });
+      await notifyPharmacy(tx, stock.pharmacyId, 'Оновлено пороги запасу',
+        `${drug.name} (${drug.sku}) · MSL ${stock.msl} → ${msl}, Max ${stock.maxLevel} → ${maxLevel}.`);
       return updated;
     });
   }

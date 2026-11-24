@@ -1,4 +1,6 @@
 import { isAdministrativeRole } from './administrative-role';
+import { administrators } from '../notifications/business-notifications';
+import { notifyUsers } from '../notifications/inbox.service';
 import { ForbiddenException, Injectable, Logger, OnModuleDestroy, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
 import { authenticator } from 'otplib';
@@ -230,6 +232,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       await this.audit(tx, 'ACCOUNT_BLOCKED', userId);
       await this.audit(tx, 'ACCOUNT_BLOCK_ACTION', actor.userId);
       await tx.auditLog.create({ data: { userId: actor.userId, targetUserId: userId, eventType: 'ACCOUNT_BLOCKED' } });
+      await notifyUsers(tx, administrators, {
+        title: 'Обліковий запис заблоковано', message: `Користувач №${userId} · роль: ${user.role.code}.`,
+      });
       return revoked;
     });
     await this.redis.rememberRevoked(hashes);
@@ -249,6 +254,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       if (!changed.count) throw new UnauthorizedException();
       await tx.authChallenge.deleteMany({ where: { userId: user.userId } });
       await this.audit(tx, 'PASSWORD_CHANGED', user.userId);
+      await notifyUsers(tx, { userId: user.userId }, {
+        title: 'Пароль змінено', message: 'Попередні сеанси вашого облікового запису завершено.',
+      });
       return this.revoke(tx, user.userId);
     });
     await this.redis.rememberRevoked(hashes);
@@ -281,6 +289,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       if (!changed.count) throw new UnauthorizedException();
       await tx.authChallenge.deleteMany({ where: { userId: challenge.userId } });
       await this.audit(tx, 'PASSWORD_RESET', challenge.userId);
+      await notifyUsers(tx, { userId: challenge.userId }, {
+        title: 'Пароль відновлено', message: 'Попередні сеанси вашого облікового запису завершено.',
+      });
       return this.revoke(tx, challenge.userId);
     });
     await this.redis.rememberRevoked(hashes);

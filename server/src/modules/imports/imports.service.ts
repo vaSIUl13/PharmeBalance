@@ -4,6 +4,7 @@ import { type DataType, Prisma, type SourceFormat } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import type { Principal } from '../auth/auth.service';
 import { lockUser } from '../users/pharmacy-assignments';
+import { notifyPharmacy } from '../notifications/business-notifications';
 import { parseFile, type ImportError, type ImportRow } from './import-file';
 
 type Upload = { pharmacyId: number; dataType: DataType; sourceFormat: SourceFormat; snapshotAt?: Date;
@@ -108,9 +109,20 @@ export class ImportsService {
         recordsRejected: errors.some(error => error.row === 0) ? file.total : errors.length,
         recordsApplied: errors.length ? 0 : changes.length, errors, status: errors.length ? 'REJECTED' : 'APPLIED' },
         omit: { requestKey: true } });
-      if (errors.length || !changes.length) return batch;
+      const label = dataType === 'STOCKS' ? 'залишків' : 'продажів';
+      if (errors.length) {
+        await notifyPharmacy(tx, pharmacyId, 'Імпорт відхилено', `Імпорт ${label} №${batch.importId} · відхилено рядків: ${batch.recordsRejected}.`,
+          { includeManagers: false });
+        return batch;
+      }
+      if (!changes.length) return batch;
       const payload = JSON.stringify(changes);
+      let replenished: string[] = [];
+      let changed = changes.length;
       if (dataType === 'STOCKS') {
+        const stockChanges = changes.filter(row => bySku.get(row.sku)?.quantity !== row.quantity);
+        changed = stockChanges.length;
+        replenished = stockChanges.filter(row => bySku.get(row.sku)?.quantity === 0 && row.quantity > 0).map(row => row.sku);
         await tx.$executeRaw`UPDATE stock_item s SET quantity = r.quantity, quantity_as_of = ${snapshotAt}, updated_at = clock_timestamp()
           FROM jsonb_to_recordset(${payload}::jsonb) AS r("stockId" int, quantity int) WHERE s.stock_id = r."stockId"`;
       } else {
@@ -122,6 +134,9 @@ export class ImportsService {
             returned_quantity = excluded.returned_quantity, unit_price = excluded.unit_price,
             source_row = excluded.source_row, import_id = excluded.import_id, stockout = excluded.stockout`;
       }
+      if (changed) await notifyPharmacy(tx, pharmacyId, `Оновлено дані ${label}`,
+        `Імпорт №${batch.importId} · змінено рядків: ${changed}.` + (replenished.length
+          ? ` Знову в наявності (${replenished.length}): ${replenished.slice(0, 5).join(', ')}.` : ''));
       return batch;
     }, { timeout: 30000 });
   }

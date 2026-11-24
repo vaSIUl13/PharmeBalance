@@ -1,6 +1,8 @@
 import { NotFoundException } from '@nestjs/common';
 import { Prisma, Source } from '@prisma/client';
 import { haversine, nearest, transferLimit } from './donor-selection';
+import { administrators, networkManagers } from '../notifications/business-notifications';
+import { notifyUsers } from '../notifications/inbox.service';
 
 const stockInclude = { pharmacy: true, drug: { select: { isActive: true } } } satisfies Prisma.StockItemInclude;
 export const activeTransfers = ['CONFIRMED', 'IN_PROGRESS'] as const;
@@ -97,6 +99,23 @@ export async function generateRecommendations(tx: Prisma.TransactionClient, runI
   }
   for (let start = 0; start < recommendations.length; start += 1000) {
     await tx.recommendation.createMany({ data: recommendations.slice(start, start + 1000) });
+  }
+  if (recommendations.length && !await tx.forecastRun.findFirst({
+    where: { synthetic, OR: [{ asOf: { gt: run.asOf } }, { asOf: run.asOf, id: { gt: runId } }] }, select: { id: true },
+  })) {
+    const previous = await tx.forecastRun.findFirst({
+      where: { synthetic, id: { not: runId } }, orderBy: [{ asOf: 'desc' }, { id: 'desc' }], select: { id: true },
+    });
+    const priorPlans = previous ? await tx.recommendation.findMany({
+      where: { forecast: { runId: previous.id } }, select: { donorStockId: true, recipientStockId: true, quantity: true },
+    }) : [];
+    const key = ({ donorStockId, recipientStockId, quantity }: Pick<Prisma.RecommendationCreateManyInput,
+      'donorStockId' | 'recipientStockId' | 'quantity'>) => `${donorStockId}/${recipientStockId}/${quantity}`;
+    const priorKeys = new Set(priorPlans.map(key));
+    const changed = recommendations.filter(row => !priorKeys.has(key(row))).length;
+    if (changed) await notifyUsers(tx, { OR: [administrators, networkManagers] }, {
+      title: 'Готові рекомендації перерозподілу', message: `Прогноз №${runId} · нових або змінених рекомендацій: ${changed}.`,
+    });
   }
   return { runId, created: recommendations.length, evaluated: forecasts.length };
 }

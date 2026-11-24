@@ -8,6 +8,7 @@ import { activeTransfers, generateRecommendations } from './generate';
 import { transferLimit } from './donor-selection';
 import { roadRoute } from './road-route';
 import { notifyUsers } from '../notifications/inbox.service';
+import { administrators } from '../notifications/business-notifications';
 import { transferAudience } from '../notifications/transfer-audience';
 
 export const commands = ['CONFIRM', 'REJECT', 'CANCEL', 'DISPATCH', 'RECEIVE'] as const;
@@ -117,10 +118,10 @@ export class RecommendationsService {
           code: transition.code, actorId: user.userId, managerId: manager?.userId, internal: true,
           donorId: record.donorStock.pharmacyId, recipientId: record.recipientStock.pharmacyId,
         });
-        await notifyUsers(tx, where, {
-          recommendationId: id, title: transferTitles[transition.code],
-          message: `№${id} · ${record.donorStock.drug.name} · ${record.donorStock.pharmacy.name} → ${record.recipientStock.pharmacy.name}`,
-        });
+        const title = transferTitles[transition.code];
+        const message = `№${id} · ${record.donorStock.drug.name} · ${record.donorStock.pharmacy.name} → ${record.recipientStock.pharmacy.name}`;
+        await notifyUsers(tx, where, { recommendationId: id, title, message });
+        await notifyUsers(tx, administrators, { title, message });
         return { recommendationId: id, status: transition.toStatus, replayed: false };
       };
       if (command === 'CONFIRM' && donor && recipient) {

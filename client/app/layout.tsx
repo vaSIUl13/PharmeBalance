@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "PharmaBalance",
   description: "Управління запасами аптечної мережі",
+  icons: {
+    icon: "/assets/icons/logo.svg",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

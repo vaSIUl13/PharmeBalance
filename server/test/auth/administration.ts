@@ -99,6 +99,13 @@ export async function testAdministration(t: TestContext, context: SignedInFixtur
     assert.deepEqual(visible.items.map((p: { pharmacyId: number; isActive: boolean }) => [p.pharmacyId, p.isActive]), [[pharmacyId, true]]);
     assert.equal((await request('/pharmacies/' + pharmacyId, { cookies: session })).status, 200);
     assert.equal((await request('/pharmacies/' + pharmacyId, { cookies: head })).status, 404);
+    const activationNotices = await db.systemNotification.findMany({ where: {
+      title: 'Аптеку активовано', message: { contains: '(' + code + ')' },
+      userId: { in: [accounts.admin.userId, accounts.superadmin.userId, accounts.manager.userId, accounts.head.userId, accounts.newHead.userId] },
+    }, select: { userId: true } });
+    assert.equal(activationNotices.length, 4);
+    assert.deepEqual(new Set(activationNotices.map(row => row.userId)),
+      new Set([accounts.admin.userId, accounts.superadmin.userId, accounts.manager.userId, accounts.newHead.userId]));
     const events = await db.auditLog.findMany({ where: { targetUserId: accounts.newHead.userId }, orderBy: { logId: 'asc' } });
     assert.deepEqual(events.map(e => e.eventType), ['ACCOUNT_CREATED', 'ROLE_CHANGED', 'PHARMACY_ASSIGNED', 'REFERENCE_EDITED']);
     assert.equal((await request('/users/' + accounts.newHead.userId + '/block', { method: 'POST', cookies: admin })).status, 204);

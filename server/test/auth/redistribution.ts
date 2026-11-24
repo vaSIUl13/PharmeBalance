@@ -93,10 +93,14 @@ export async function testRedistribution(t: TestContext, context: TransferFixtur
     assert.equal((await act('RECEIVE', head, { quantity: 99 }, id)).status, 400);
     assert.equal((await act('RECEIVE', logist, { quantity: 100 }, id)).status, 403);
     const inboxRows = await db.systemNotification.findMany({ where: { recommendationId: id }, orderBy: { id: 'asc' } });
-    assert.equal(inboxRows.length, 4);
+    assert.equal(inboxRows.length, 5);
     assert.equal(inboxRows[0].userId, accounts.logist.userId);
     assert.deepEqual(new Set(inboxRows.slice(1).map(row => row.userId)),
-      new Set([accounts.manager.userId, accounts.head.userId, accounts.donorHead.userId]));
+      new Set([accounts.manager.userId, accounts.head.userId, accounts.donorHead.userId, accounts.logist.userId]));
+    assert.equal(await db.systemNotification.count({ where: {
+      userId: { in: [accounts.admin.userId, accounts.superadmin.userId] }, recommendationId: null,
+      title: 'Доставку розпочато', message: { startsWith: '№' + id + ' ·' },
+    } }), 2);
     assert.equal((await request('/recommendations/' + id, { cookies: donorSession })).status, 200);
     assert.equal((await request('/recommendations/' + id, { cookies: context.admin })).status, 404);
     assert.equal((await act('RECEIVE', donorSession, { quantity: 100 }, id)).status, 404);
