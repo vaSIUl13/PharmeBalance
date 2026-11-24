@@ -3,6 +3,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { isAdministrativeRole } from '../auth/administrative-role';
 import type { Principal } from '../auth/auth.service';
 import { notifyUsers } from '../notifications/inbox.service';
+import { administrators } from '../notifications/business-notifications';
 import { lockUser } from './pharmacy-assignments';
 
 const editableRoles = ['admin', 'manager', 'head', 'logist'];
@@ -62,8 +63,8 @@ export class RolePermissionsService {
           userId: actor.userId, eventType: 'ROLE_PERMISSION_CHANGED',
           details: `${roleCode} · ${code} · ${granted ? 'granted' : 'revoked'}`,
         } });
-        await notifyUsers(tx, { roleId: role.roleId }, {
-          title: 'Змінено дозволи вашої ролі',
+        await notifyUsers(tx, { OR: [administrators, { roleId: role.roleId }] }, {
+          title: 'Змінено дозволи ролі',
           message: `${role.name} · ${granted ? 'Надано' : 'Відкликано'} дозвіл «${permission.name}».`,
         });
       }

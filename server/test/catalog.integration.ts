@@ -42,6 +42,7 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
   const email = id + '@example.invalid';
   let pharmacyId: number | undefined;
   let adminId: number | undefined;
+  let syncAdminId: number | undefined;
   let demoUploaderId: number | undefined;
   let demoPharmacyId: number | undefined;
   let demoDrugId: number | undefined;
@@ -65,6 +66,7 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
         await db.auditLog.deleteMany({ where: { userId: adminId } });
         await db.userAccount.delete({ where: { userId: adminId } });
       }
+      if (syncAdminId) await db.userAccount.delete({ where: { userId: syncAdminId } });
       if (pharmacyId) await db.pharmacy.delete({ where: { pharmacyId } });
     } finally { await db.$disconnect(); }
   });
@@ -87,7 +89,14 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
   }
 
   await t.test('dry-run, failed checkpoint, resume and idempotence', async () => {
+    const testAdmin = await db.userAccount.create({ data: {
+      email: 'sync-' + email, login: 'sync-' + id, firstName: 'Test', lastName: 'Catalog', passwordHash: 'disabled-test',
+      role: { connect: { code: 'admin' } },
+    } });
+    const notices = () => db.systemNotification.count({ where: { userId: testAdmin.userId, message: { startsWith: source + ' ·' } } });
+    syncAdminId = testAdmin.userId;
     assert.equal((await synchronize(db, adapter(), { apply: false })).created, 2);
+    assert.equal(await notices(), 0);
     assert.equal(await db.externalPharmacy.count({ where: { source } }), 0);
     assert.equal(await db.catalogSyncRun.count({ where: { source } }), 0);
     await assert.rejects(synchronize(db, adapter(true), { apply: true }), /simulated source failure/);
@@ -96,6 +105,7 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
     assert.equal(failed.checkpoint.offset, 1);
     assert(failed.counters && typeof failed.counters === 'object' && !Array.isArray(failed.counters));
     assert.equal(failed.counters.created, 1);
+    assert.equal(await notices(), 1);
     const resumed = await synchronize(db, adapter(), { apply: true, resume: true });
     assert.equal(resumed.created, 1);
     assert.equal(resumed.duplicates, 1);
@@ -104,6 +114,7 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
     assert.equal(repeat.unchanged, 2);
     assert.equal(repeat.duplicates, 1);
     assert.equal(repeat.created, 0);
+    assert.equal(await notices(), 2);
   });
 
   await t.test('a managed pharmacy optionally links a source without becoming part of the feed', async () => {

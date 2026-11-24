@@ -51,7 +51,10 @@ export async function testRolePermissions(t: TestContext, fixture: SignedInFixtu
       assert(!principal.permissions.includes('DATA_IMPORT'));
       const page: Inbox = await (await request(inboxPath, { cookies: head })).json();
       assert.equal(page.unread, 1);
-      assert.equal(page.items[0].title, 'Змінено дозволи вашої ролі');
+      assert.equal(page.items[0].title, 'Змінено дозволи ролі');
+      assert.equal(await db.systemNotification.count({ where: {
+        userId: { in: [accounts.admin.userId, accounts.superadmin.userId] }, title: 'Змінено дозволи ролі',
+      } }), 2);
       assert.equal(await db.systemNotification.count({ where: { userId: other.userId } }), 1);
       assert.equal(await db.auditLog.count({ where: { userId: accounts.superadmin.userId, eventType: 'ROLE_PERMISSION_CHANGED' } }), 1);
       const id = page.items[0].id;

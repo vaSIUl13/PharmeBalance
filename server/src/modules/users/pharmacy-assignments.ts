@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { notifyPharmacy } from '../notifications/business-notifications';
 
 export async function lockUser(tx: Prisma.TransactionClient, userId: number) {
   // Keep user updates serialized while allowing foreign-key checks on the account.
@@ -11,9 +12,15 @@ export async function endAssignments(tx: Prisma.TransactionClient, actor: number
     await tx.userPharmacy.update({ where: { userId_pharmacyId: { userId, pharmacyId } }, data: { unassignedAt: new Date() } });
     const audit = { userId: actor, targetUserId: userId };
     await tx.auditLog.create({ data: { ...audit, eventType: 'PHARMACY_ASSIGNED', details: 'Assignment ended for pharmacy ' + pharmacyId } });
+    await notifyPharmacy(tx, pharmacyId, 'Завершено призначення до аптеки', `Працівник №${userId} · роль: ${role}.`,
+      { includeLogistics: true, userId });
     if (role === 'head') {
       const changed = await tx.pharmacy.updateMany({ where: { pharmacyId, isActive: true }, data: { isActive: false } });
-      if (changed.count) await tx.auditLog.create({ data: { ...audit, eventType: 'REFERENCE_EDITED', details: 'Deactivated pharmacy ' + pharmacyId } });
+      if (changed.count) {
+        await tx.auditLog.create({ data: { ...audit, eventType: 'REFERENCE_EDITED', details: 'Deactivated pharmacy ' + pharmacyId } });
+        await notifyPharmacy(tx, pharmacyId, 'Аптеку деактивовано', 'Аптека залишилася без призначеного завідувача.',
+          { includeLogistics: true });
+      }
     }
   }
 }

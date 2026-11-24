@@ -138,6 +138,13 @@ export async function testInventory(t: TestContext, context: SignedInFixture) {
     const [first, repeat] = await Promise.all(receipts.map(r => r.json()));
     assert.equal(first.importId, repeat.importId);
     assert.equal(first.recordsApplied, 1);
+    const importNotices = await db.systemNotification.findMany({ where: {
+      title: 'Оновлено дані залишків', message: { contains: `Імпорт №${first.importId} ·` },
+      userId: { in: [accounts.admin.userId, accounts.superadmin.userId, accounts.manager.userId, accounts.head.userId, accounts.logist.userId] },
+    }, select: { userId: true } });
+    assert.equal(importNotices.length, 4);
+    assert.deepEqual(new Set(importNotices.map(row => row.userId)),
+      new Set([accounts.admin.userId, accounts.superadmin.userId, accounts.manager.userId, accounts.head.userId]));
     const current = () => db.stockItem.findUniqueOrThrow({ where: { stockId: stock.stockId } });
     assert.equal((await current()).quantity, 17);
     assert.equal((await upload('stocks', snapshot.replace(',17', ',18'))).status, 422);

@@ -4,6 +4,7 @@ const { PrismaClient } = require('@prisma/client');
 const { hash } = require('./adapters.cjs');
 const { canonical, equal } = require('./record-values.cjs');
 const { makeSource } = require('./sources.cjs');
+const { notifyCatalogAdministrators } = require('./notifications.cjs');
 
 const lease = () => new Date(Date.now() + 10 * 60_000);
 const counts = () => ({ seen: 0, created: 0, updated: 0, unchanged: 0, duplicates: 0, rejected: 0, removed: 0 });
@@ -133,15 +134,26 @@ async function synchronize(db, adapter, options = {}) {
       if (page.done) break;
       if (counters.seen >= limit) { status = 'PAUSED'; break; }
     }
-    if (run) await commit(db, run, (tx) => tx.catalogSyncRun.update({
-      where: { id: run.id },
-      data: { status, finishedAt: new Date(), counters, ...(errors.length ? { error: JSON.stringify(errors).slice(0, 500) } : {}) },
-    }));
+    if (run) await commit(db, run, async (tx) => {
+      await tx.catalogSyncRun.update({
+        where: { id: run.id },
+        data: { status, finishedAt: new Date(), counters, ...(errors.length ? { error: JSON.stringify(errors).slice(0, 500) } : {}) },
+      });
+      if (counters.created || counters.updated || counters.removed || counters.rejected) {
+        const catalog = adapter.isDrlz ? 'лікарських засобів' : 'аптек';
+        await notifyCatalogAdministrators(tx, `Оновлено зовнішній довідник ${catalog}`,
+          `${adapter.source} · синхронізація №${run.id} · додано: ${counters.created}, змінено: ${counters.updated}, вилучено: ${counters.removed}, відхилено: ${counters.rejected}.`);
+      }
+    });
     return { runId: run?.id, source: adapter.source, mode: run ? 'apply' : 'dry-run', status, ...counters, errors };
   } catch (error) {
-    if (run) await db.catalogSyncRun.updateMany({
-      where: { id: run.id, status: 'RUNNING' },
-      data: { status: 'FAILED', finishedAt: new Date(), error: safeError(error) },
+    if (run) await db.$transaction(async (tx) => {
+      const failed = await tx.catalogSyncRun.updateMany({
+        where: { id: run.id, status: 'RUNNING' },
+        data: { status: 'FAILED', finishedAt: new Date(), error: safeError(error) },
+      });
+      if (failed.count) await notifyCatalogAdministrators(tx, 'Збій синхронізації довідника',
+        `${adapter.source} · синхронізація №${run.id}. Подробиці в журналі синхронізації.`);
     });
     throw error;
   }

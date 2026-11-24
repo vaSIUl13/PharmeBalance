@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { basePolicy, calculate, classifyPharmacy, dayMs, modelVersion, type DailySale, type Policy } from './forecast-model';
+import { notifyForecastChanges } from './forecast-notifications';
 
 export async function publishSnapshot(tx: Prisma.TransactionClient, asOf: Date, synthetic: boolean, policy: Policy) {
   const start = new Date(+asOf - (policy.historyDays - 1) * dayMs);
@@ -21,6 +22,9 @@ export async function publishSnapshot(tx: Prisma.TransactionClient, asOf: Date, 
   const latest = await tx.forecastRun.findFirst({ where: { asOf, synthetic }, orderBy: { id: 'desc' } });
   const fingerprint = modelVersion + ':' + key;
   if (latest?.version.split('@')[0] === fingerprint) return { runId: latest.id, reused: true };
+  const previous = latest ?? await tx.forecastRun.findFirst({ where: { synthetic, asOf: { lt: asOf } },
+    orderBy: [{ asOf: 'desc' }, { id: 'desc' }] });
+  const newer = await tx.forecastRun.findFirst({ where: { synthetic, asOf: { gt: asOf } }, select: { id: true } });
   const identity = { asOf, synthetic, version: fingerprint + '@' + (latest?.id ?? 0) };
   const inserted = await tx.forecastRun.createMany({ data: { ...identity, policy }, skipDuplicates: true });
   const run = await tx.forecastRun.findUniqueOrThrow({ where: { asOf_synthetic_version: identity } });
@@ -66,6 +70,7 @@ export async function publishSnapshot(tx: Prisma.TransactionClient, asOf: Date, 
       FROM forecast f WHERE f.run_id = ${run.id} AND f.stock_id = s.stock_id AND s.pharmacy_id = ${pharmacyId}
         AND (s.abc_class,s.xyz_class) IS DISTINCT FROM (f.abc_class,f.xyz_class)`;
   }
+  if (!newer) await notifyForecastChanges(tx, run.id, previous?.id);
   return { runId: run.id, reused: false };
 }
 

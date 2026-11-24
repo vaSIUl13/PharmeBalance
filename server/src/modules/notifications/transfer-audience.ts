@@ -22,7 +22,8 @@ export function transferAudience({ code, actorId, managerId, donorId, recipientI
   const manager = owner === undefined ? { userId: { in: [] } } : match('manager', ['NETWORK_VIEW'], undefined, owner);
   const rules = { logist, head, manager };
   const routes: Record<string, (keyof typeof rules)[]> = {
-    CONFIRM: ['logist'], DISPATCH: ['head', 'manager'], RECEIVE: internal ? ['manager', 'logist', 'head'] : ['manager'],
+    CONFIRM: ['logist'], DISPATCH: internal ? ['head', 'manager', 'logist'] : ['head', 'manager'],
+    RECEIVE: internal ? ['manager', 'logist', 'head'] : ['manager'],
     REJECT: ['manager'], CANCEL: ['logist', 'manager'], STALE: ['manager'],
   };
   const roles = routes[code] ?? [];

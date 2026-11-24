@@ -4,6 +4,8 @@ import { PrismaService } from '../../database/prisma.service';
 import { EmailService } from './email.service';
 import { transferEmail } from './transfer-email';
 import { transferAudience } from './transfer-audience';
+import { administrators } from './business-notifications';
+import { notifyUsers } from './inbox.service';
 
 const context = { action: { include: { actionType: true, recommendation: {
   include: { donorStock: { include: { pharmacy: { select: { isSynthetic: true } } } }, recipientStock: true, recommendationActionRows: {
@@ -130,15 +132,26 @@ export class NotificationsService implements OnModuleInit, OnModuleDestroy {
         };
       }
       await tx.emailDelivery.update({ where: claim, data });
+      if (data.failedAt) {
+        await notifyUsers(tx, administrators, {
+          title: 'Не вдалося доставити email про рейс',
+          message: `Рейс №${action.recommendationId} · доставка №${delivery.id} · спроб: ${attempts}.`,
+        });
+      }
       return true;
     }, { timeout: 60000 });
     return prepared || sent;
   }
 
   async retryFailed(id: number) {
-    const result = await this.db.emailDelivery.updateMany({ where: { id, failedAt: { not: null },
-      acceptedAt: null, skippedAt: null },
-      data: { failedAt: null, attempts: 0, nextAttemptAt: new Date() } });
-    return result.count > 0;
+    return this.db.$transaction(async tx => {
+      const result = await tx.emailDelivery.updateMany({ where: { id, failedAt: { not: null },
+        acceptedAt: null, skippedAt: null },
+        data: { failedAt: null, attempts: 0, nextAttemptAt: new Date() } });
+      if (result.count) await notifyUsers(tx, administrators, {
+        title: 'Заплановано повторну доставку email', message: `Доставка №${id} повернулася до черги.`,
+      });
+      return result.count > 0;
+    });
   }
 }

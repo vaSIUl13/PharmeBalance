@@ -4,6 +4,7 @@ import { pharmacyScope } from '../auth/auth-scope';
 import type { Principal } from '../auth/auth.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import { notifyPharmacy } from '../notifications/business-notifications';
 
 @Injectable()
 export class PharmaciesService {
@@ -73,6 +74,8 @@ export class PharmaciesService {
         await tx.auditLog.create({
           data: { userId: actor, eventType: 'REFERENCE_EDITED', details: 'Created managed pharmacy ' + pharmacy.code },
         });
+        await notifyPharmacy(tx, pharmacy.pharmacyId, 'Додано аптеку до мережі',
+          'Аптека очікує призначення завідувача.');
         return pharmacy;
       });
     } catch (error) {

@@ -1,6 +1,7 @@
 const { parseArgs } = require('node:util');
 const { PrismaClient } = require('@prisma/client');
 const { normalizeRegistration, clean } = require('./adapters.cjs');
+const { notifyCatalogAdministrators } = require('./notifications.cjs');
 
 async function linkSku(db, options) {
   const number = normalizeRegistration(options.registration);
@@ -56,6 +57,7 @@ async function linkSku(db, options) {
         registrationId: data.registrationId, registrationPackageKey: data.registrationPackageKey,
       },
     }, create: data, update: {} });
+    await notifyCatalogAdministrators(tx, 'Додано SKU до довідника', `${drug.name} (${drug.sku}) · реєстрація ${number}.`);
     return { sku: drug.sku, status: 'created' };
   });
 }
