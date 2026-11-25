@@ -6,8 +6,10 @@ import { TransferInput } from '../../modules/recommendations/transfer-input';
 export const recommendationsDocs = {
   controller: ApiTags('recommendations'),
   list: applyDecorators(
-    ApiOperation({ summary: 'List redistribution recommendations visible to the current user' }),
+    ApiOperation({ summary: 'List redistribution recommendations visible to the current user',
+      description: 'Manager results include donor and recipient stock details.' }),
     ApiQuery({ name: 'after', required: false, type: Number, description: 'Last recommendation ID of the previous page' }),
+    ApiQuery({ name: 'notificationId', required: false, type: Number, description: 'List detailed recommendations from a batch notification owned by the manager' }),
   ),
   detail: ApiOperation({ summary: 'Recommendation with endpoints, donor distance and uncovered quantity' }),
   route: applyDecorators(
@@ -23,7 +25,7 @@ export const recommendationsDocs = {
     ] } }),
   ),
   history: ApiOperation({ summary: 'List transfer actions, actors, quantities and status transitions' }),
-  generate: ApiOperation({ summary: 'Evaluate shortage positions in a forecast run once' }),
+  generate: ApiOperation({ summary: 'Evaluate unresolved shortage positions in a forecast run' }),
   act: applyDecorators(
     ApiConflictResponse({ description: 'Invalid transition, stale suggestion, or unavailable reservation' }),
     ApiBody({ type: TransferInput, required: false }),

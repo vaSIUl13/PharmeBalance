@@ -33,9 +33,20 @@ export async function loadPositions(): Promise<{ asOf: string | null; items: Cur
 }
 
 export async function loadTransfers(): Promise<TransferDetail[]> {
-  const list = await apiRequest<Transfer[]>("recommendations");
-  return Promise.all(list.slice(0, transferPageSize).map(item =>
+  const items = await apiRequest<(Transfer | TransferDetail)[]>("recommendations");
+  return Promise.all(items.map(item => "donorStock" in item ? item :
     apiRequest<TransferDetail>("recommendations/" + item.recommendationId)));
+}
+
+export async function loadNotificationTransfers(notificationId: string): Promise<TransferDetail[]> {
+  const params = new URLSearchParams({ notificationId });
+  const items: TransferDetail[] = [];
+  for (;;) {
+    const page = await apiRequest<TransferDetail[]>("recommendations?" + params);
+    items.push(...page);
+    if (page.length < transferPageSize) return items;
+    params.set("after", String(page[page.length - 1].recommendationId));
+  }
 }
 
 export function receiveTransfer(id: number, quantity: number, comment: string): Promise<TransferResult> {

@@ -4,7 +4,7 @@ import { PrismaService } from '../../database/prisma.service';
 import { transferScope } from '../auth/auth-scope';
 import type { Principal } from '../auth/auth.service';
 
-type Content = Pick<Prisma.SystemNotificationCreateManyInput, 'title' | 'message' | 'recommendationId'>;
+type Content = Pick<Prisma.SystemNotificationCreateManyInput, 'title' | 'message' | 'recommendationId' | 'recommendationIds'>;
 
 export async function notifyUsers(tx: Prisma.TransactionClient, audience: Prisma.UserAccountWhereInput, content: Content) {
   const users = await tx.userAccount.findMany({
@@ -31,7 +31,8 @@ export class InboxService {
     const [rows, unread] = await this.db.$transaction([
       this.db.systemNotification.findMany({
         where: { ...where, id: before === undefined ? undefined : { lt: before } },
-        select: { id: true, title: true, message: true, recommendationId: true, createdAt: true, readAt: true },
+        select: { id: true, title: true, message: true, recommendationId: true,
+          recommendationIds: user.role === 'manager' && user.permissions.includes('NETWORK_VIEW'), createdAt: true, readAt: true },
         take: 31, orderBy: { id: 'desc' },
       }),
       this.db.systemNotification.count({ where: { ...where, readAt: null } }),

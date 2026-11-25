@@ -9,6 +9,7 @@ import { testRedistribution } from './auth/redistribution';
 import { testRegistration } from './auth/registration';
 import { testSessions } from './auth/sessions';
 import { testRiskOrdering } from './auth/risk-order';
+import { testRecommendationRetry } from './auth/recommendation-retry';
 
 test('auth against PostgreSQL and Redis', async (t) => {
   const fixture = await createFixture(t);
@@ -19,6 +20,7 @@ test('auth against PostgreSQL and Redis', async (t) => {
   const manager = await testInventory(t, signedIn);
   const context = { ...signedIn, manager };
   await testRiskOrdering(t, context);
+  await testRecommendationRetry(t, context);
   await testRedistribution(t, context);
   await testSessions(t, context);
 });

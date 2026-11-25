@@ -13,11 +13,11 @@ groups:
           summary: No successful forecast worker cycle in 45 minutes
       - alert: PharmaBalanceSlowForecastCycle
         expr: |
-          increase(pharmabalance_forecast_cycle_duration_seconds_count{status="success"}[30m])
+          increase(pharmabalance_forecast_cycle_duration_seconds_count{status="success"}[2h])
             - ignoring(le)
-          increase(pharmabalance_forecast_cycle_duration_seconds_bucket{status="success",le="30"}[30m]) > 0
+          increase(pharmabalance_forecast_cycle_duration_seconds_bucket{status="success",le="30"}[2h]) > 0
         annotations:
-          summary: At least one forecast worker cycle exceeded 30 seconds
+          summary: A forecast worker cycle exceeded 30 seconds in the last two hours
       - alert: PharmaBalanceForecastDataStale
         expr: |
           (time() - pharmabalance_forecast_data_timestamp_seconds > 172800)

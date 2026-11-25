@@ -7,6 +7,14 @@ import { useResource } from "@/lib/head/use-resource";
 import { loadForecastPage } from "@/lib/manager/api";
 import type { ForecastView } from "@/lib/manager/types";
 import { Badge, buttonClasses, EmptyState, Notice, ResourceGate } from "@/components/head/ui";
+import { useRefreshWhileVisible } from "@/lib/manager/use-refresh-while-visible";
+
+const redistributionReasons = {
+  STOCK_CHANGED_SINCE_FORECAST: "Залишки змінилися. Очікується новий прогноз.",
+  NEED_COVERED: "Потребу покрито запланованими доставками або поточним залишком.",
+  DISTANCE_UNAVAILABLE: "Немає даних про відстань до донора.",
+  NO_DONOR_WITH_ENOUGH_SURPLUS: "Немає донора з достатнім надлишком.",
+} satisfies Record<NonNullable<ForecastItem["redistributionReason"]>, string>;
 
 function PositionBadge({ item }: { item: ForecastItem }) {
   const status = positionStatus(item);
@@ -30,13 +38,15 @@ export function ForecastTable({ view, pharmacyId, names, query, mode, onEdit }: 
 }) {
   const load = useCallback(() => loadForecastPage(view, pharmacyId), [view, pharmacyId]);
   const first = useResource(load);
-  const [extra, setExtra] = useState<ForecastItem[]>([]);
-  const [next, setNext] = useState<number | null | undefined>(undefined);
+  const [extra, setExtra] = useState<{ runId: number; items: ForecastItem[]; next: number | null }>();
   const [loadingMore, setLoadingMore] = useState(false);
   const [problem, setProblem] = useState("");
 
-  const cursor = next === undefined ? first.data?.next ?? null : next;
-  const rows = [...(first.data?.items ?? []), ...extra];
+  useRefreshWhileVisible(() => { if (mode === "forecast") first.reload(); });
+  const runId = first.data?.run?.id;
+  const loaded = extra && extra.runId === runId ? extra : undefined;
+  const cursor = loaded ? loaded.next : first.data?.next ?? null;
+  const rows = [...(first.data?.items ?? []), ...(loaded?.items ?? [])];
   const text = query.trim().toLowerCase();
   const pharmacy = (item: ForecastItem) => names.get(item.stock.pharmacyId) ?? "Аптека №" + item.stock.pharmacyId;
   const visible = rows.filter(item => !text ||
@@ -48,8 +58,12 @@ export function ForecastTable({ view, pharmacyId, names, query, mode, onEdit }: 
     setProblem("");
     try {
       const page = await loadForecastPage(view, pharmacyId, cursor);
-      setExtra(current => [...current, ...page.items]);
-      setNext(page.next);
+      if (page.run && page.run.id === runId) {
+        const pageRun = page.run.id;
+        setExtra(current => ({ runId: pageRun, items: [...(current?.runId === pageRun ? current.items : []), ...page.items], next: page.next }));
+      } else {
+        first.reload();
+      }
     } catch {
       setProblem("Не вдалося завантажити наступні позиції.");
     } finally {
@@ -116,7 +130,12 @@ export function ForecastTable({ view, pharmacyId, names, query, mode, onEdit }: 
                               <td className="px-2 py-3 text-right tabular-nums">{formatNumber(toNumber(item.predictedDemand))}</td>
                               <td className="px-2 py-3 text-right tabular-nums">{formatProbability(item.shortageProbability)}</td>
                               <td className="px-2 py-3"><Days item={item} /></td>
-                              <td className="px-4 py-3"><PositionBadge item={item} /></td>
+                              <td className="px-4 py-3">
+                                <PositionBadge item={item} />
+                                {view === "risks" && item.redistributionReason && (
+                                  <p className="mt-1 max-w-48 text-xs text-[#475569]">{redistributionReasons[item.redistributionReason]}</p>
+                                )}
+                              </td>
                             </>}
                             {mode === "thresholds" && (
                               <td className="px-4 py-3 text-right">

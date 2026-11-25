@@ -5,6 +5,7 @@ export type InboxItem = {
   title: string;
   message: string;
   recommendationId: number | null;
+  recommendationIds?: number[];
   createdAt: string;
   readAt: string | null;
 };
@@ -24,7 +25,11 @@ export function readInboxThrough(id: number): Promise<void> {
   return apiRequest(inbox + "/read-through/" + id, "POST");
 }
 
-export function notificationLink(role: string, id: number | null) {
+export function notificationLink(role: string, item: InboxItem) {
+  if (role === "manager" && item.recommendationIds?.length) {
+    return "/manager/recommendations?notificationId=" + item.id;
+  }
+  const id = item.recommendationId;
   if (id === null) return null;
   switch (role) {
     case "manager": return "/manager/transfer/" + id;
