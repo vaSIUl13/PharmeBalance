@@ -5,6 +5,7 @@ import type { Principal } from '../auth/auth.service';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
 import { notifyPharmacy } from '../notifications/business-notifications';
+import type { PharmacyUpdate } from './dto/pharmacy-update.dto';
 
 @Injectable()
 export class PharmaciesService {
@@ -84,5 +85,37 @@ export class PharmaciesService {
       }
       throw error;
     }
+  }
+
+  update(pharmacyId: number, data: PharmacyUpdate, actor: number) {
+    return this.db.$transaction(async tx => {
+      const where = { pharmacyId };
+      await tx.$queryRaw`SELECT pharmacy_id FROM pharmacy WHERE pharmacy_id = ${pharmacyId} FOR NO KEY UPDATE`;
+      const current = await tx.pharmacy.findUnique({ where });
+      if (!current) throw new NotFoundException('Managed pharmacy not found');
+      const moved = (data.latitude !== undefined && !current.latitude.eq(data.latitude)) ||
+        (data.longitude !== undefined && !current.longitude.eq(data.longitude));
+      const changed = (['name', 'city', 'address'] as const)
+        .some(field => data[field] !== undefined && data[field] !== current[field]);
+      if (!moved && !changed) return current;
+      const pharmacy = await tx.pharmacy.update({ where, data });
+      if (moved) {
+        await tx.$queryRaw`
+          SELECT from_pharmacy_id FROM pharmacy_distance
+          WHERE is_actual AND (from_pharmacy_id = ${pharmacyId} OR to_pharmacy_id = ${pharmacyId})
+          ORDER BY from_pharmacy_id, to_pharmacy_id FOR UPDATE`;
+        await tx.pharmacyDistance.updateMany({
+          where: { isActual: true, OR: [{ fromPharmacyId: pharmacyId }, { toPharmacyId: pharmacyId }] },
+          data: { isActual: false },
+        });
+      }
+      await tx.auditLog.create({
+        data: { userId: actor, eventType: 'REFERENCE_EDITED',
+          details: `Updated managed pharmacy ${current.code}${moved ? ' (coordinates changed)' : ''}` },
+      });
+      await notifyPharmacy(tx, pharmacyId, 'Оновлено дані аптеки', moved ? 'Змінено координати.' : 'Оновлено довідкові дані.',
+        { includeLogistics: true });
+      return pharmacy;
+    });
   }
 }

@@ -1,6 +1,7 @@
 import { apiRequest, authRequest } from "@/lib/auth";
 import type { Principal } from "@/lib/head/types";
-import type { AdminPharmacy, AdminUser, AuditPage, CreatePharmacyInput, CreateUserInput, DrugPage, ExternalMapPage, ExternalPharmacy, RoleCode, RoleInfo, RolePermission } from "./types";
+import type { AdminPharmacy, AdminUser, AuditPage, CreateDrugInput, CreatePharmacyInput, CreateUserInput, Drug, DrugPage,
+  ExternalMapPage, ExternalPharmacy, RoleCode, RoleInfo, RolePermission, UpdatePharmacyInput } from "./types";
 
 const pageLimit = 40;
 
@@ -32,6 +33,10 @@ export function loadPharmacies(): Promise<AdminPharmacy[]> {
 
 export function createPharmacy(input: CreatePharmacyInput): Promise<AdminPharmacy> {
   return apiRequest("pharmacies", "POST", input);
+}
+
+export function updatePharmacy(id: number, input: UpdatePharmacyInput): Promise<AdminPharmacy> {
+  return apiRequest("pharmacies/" + id, "PATCH", input);
 }
 
 export function searchExternalPharmacies(query: string, after?: number): Promise<Page<ExternalPharmacy>> {
@@ -67,6 +72,14 @@ export function loadDrugs(query = "", after?: number): Promise<DrugPage> {
   if (after !== undefined) params.set("after", String(after));
   const suffix = params.toString();
   return apiRequest<DrugPage>("drugs" + (suffix ? "?" + suffix : ""));
+}
+
+export function createDrug(input: CreateDrugInput): Promise<Drug> {
+  return apiRequest("drugs", "POST", input);
+}
+
+export function renameDrug(id: number, name: string): Promise<Drug> {
+  return apiRequest("drugs/" + id, "PATCH", { name });
 }
 
 export function loadAudit(before?: number): Promise<AuditPage> {

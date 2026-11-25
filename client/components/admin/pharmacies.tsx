@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { loadPharmacies } from "@/lib/admin/api";
+import type { AdminPharmacy } from "@/lib/admin/types";
 import { useResource } from "@/lib/head/use-resource";
 import { Badge, buttonClasses, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
 import { NetworkMap } from "./network-map";
@@ -10,7 +11,7 @@ import { PharmacyDialog } from "./pharmacy-dialog";
 export function Pharmacies() {
   const pharmacies = useResource(loadPharmacies);
   const [query, setQuery] = useState("");
-  const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<AdminPharmacy | "new" | null>(null);
   const [message, setMessage] = useState("");
 
   const items = pharmacies.data ?? [];
@@ -20,7 +21,7 @@ export function Pharmacies() {
   return (
     <>
       <PageHeader title="Аптеки мережі" subtitle="Довідник керованих аптек" actions={
-        <button type="button" className={buttonClasses.primary} onClick={() => setAdding(true)}>Додати аптеку</button>
+        <button type="button" className={buttonClasses.primary} onClick={() => setEditing("new")}>Додати аптеку</button>
       } />
       {message && <Notice tone="success">{message}</Notice>}
       <div className="grid gap-3 sm:grid-cols-3">
@@ -56,6 +57,7 @@ export function Pharmacies() {
                         <th scope="col" className="px-2 py-2 font-medium">Назва</th>
                         <th scope="col" className="px-2 py-2 font-medium">Адреса</th>
                         <th scope="col" className="px-4 py-2 font-medium">Статус</th>
+                        <th scope="col" className="px-4 py-2 font-medium">Дії</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -65,6 +67,10 @@ export function Pharmacies() {
                           <td className="px-2 py-3 font-medium">{item.name}</td>
                           <td className="px-2 py-3 text-[#475569]">{item.city}, {item.address}</td>
                           <td className="px-4 py-3"><Badge tone={item.isActive ? "success" : "neutral"}>{item.isActive ? "Активна" : "Неактивна"}</Badge></td>
+                          <td className="px-4 py-3">
+                            <button type="button" className={buttonClasses.secondary} aria-label={`Редагувати аптеку «${item.name}»`}
+                              onClick={() => setEditing(item)}>Редагувати</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -73,10 +79,10 @@ export function Pharmacies() {
               )}
         </ResourceGate>
       </Card>
-      {adding && <PharmacyDialog onClose={() => setAdding(false)} onCreated={name => {
-        setAdding(false);
-        setQuery("");
-        setMessage("Аптеку «" + name + "» додано.");
+      {editing && <PharmacyDialog pharmacy={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={name => {
+        setEditing(null);
+        if (editing === "new") setQuery("");
+        setMessage(`Аптеку «${name}» ${editing === "new" ? "додано" : "оновлено"}.`);
         pharmacies.reload();
       }} />}
     </>

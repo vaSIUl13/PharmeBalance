@@ -1,23 +1,10 @@
-import { BadRequestException, Body, Controller, DefaultValuePipe, Get, Header, Param, ParseIntPipe, Post, Query, Req } from '@nestjs/common';
+import { BadRequestException, Body, Controller, DefaultValuePipe, ForbiddenException, Get, Header, Param, ParseIntPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { DatabaseIdPipe } from '../../common/query-id';
 import { pharmaciesDocs } from '../../swagger/path/pharmacies';
 import { Permissions, type AuthRequest } from '../auth/auth.guard';
 import { PharmaciesService } from './pharmacies.service';
-
-function text(body: Record<string, unknown>, key: string, max: number) {
-  const input = body[key];
-  if (typeof input !== 'string' || !input.trim() || input.trim().length > max) {
-    throw new BadRequestException('Invalid ' + key);
-  }
-  return input.trim();
-}
-
-function coordinate(input: unknown, key: string, max: number) {
-  if (typeof input !== 'number' || !Number.isFinite(input) || Math.abs(input) > max) {
-    throw new BadRequestException('Invalid ' + key);
-  }
-  return input.toFixed(6);
-}
+import { isAdministrativeRole } from '../auth/administrative-role';
+import { parsePharmacyUpdate, pharmacyCoordinate, pharmacyText } from './dto/pharmacy-update.dto';
 
 function bound(input: string | undefined, key: string, max: number) {
   const value = Number(input);
@@ -77,6 +64,8 @@ export class PharmaciesController {
   @Post()
   @Permissions('REFERENCE_EDIT')
   create(@Body() input: unknown, @Req() request: AuthRequest) {
+    const actor = request.principal;
+    if (!actor || !isAdministrativeRole(actor.role)) throw new ForbiddenException();
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new BadRequestException('Expected pharmacy data');
     const body = input as Record<string, unknown>;
     const ids = body.externalRecordIds ?? [];
@@ -84,11 +73,21 @@ export class PharmaciesController {
         ids.some((id) => !Number.isInteger(id) || id <= 0 || id > 2147483647)) {
       throw new BadRequestException('Invalid external record IDs');
     }
-    const code = body.code === undefined && ids.length ? 'EXT-' + ids[0] : text(body, 'code', 20).toUpperCase();
+    const code = body.code === undefined && ids.length ? 'EXT-' + ids[0] : pharmacyText(body.code, 'code', 20).toUpperCase();
     if (!/^[A-Z0-9][A-Z0-9._-]*$/.test(code) || code.startsWith('SYN-')) throw new BadRequestException('Invalid pharmacy code');
     return this.pharmacies.create({
-      code, name: text(body, 'name', 100), city: text(body, 'city', 60), address: text(body, 'address', 150),
-      latitude: coordinate(body.latitude, 'latitude', 90), longitude: coordinate(body.longitude, 'longitude', 180),
-    }, [...new Set<number>(ids)], request.principal!.userId);
+      code, name: pharmacyText(body.name, 'name', 100), city: pharmacyText(body.city, 'city', 60),
+      address: pharmacyText(body.address, 'address', 150),
+      latitude: pharmacyCoordinate(body.latitude, 'latitude', 90), longitude: pharmacyCoordinate(body.longitude, 'longitude', 180),
+    }, [...new Set<number>(ids)], actor.userId);
+  }
+
+  @pharmaciesDocs.update
+  @Patch(':id')
+  @Permissions('REFERENCE_EDIT')
+  update(@Body() input: unknown, @Param('id', DatabaseIdPipe) id: number, @Req() request: AuthRequest) {
+    const actor = request.principal;
+    if (!actor || !isAdministrativeRole(actor.role)) throw new ForbiddenException();
+    return this.pharmacies.update(id, parsePharmacyUpdate(input), actor.userId);
   }
 }

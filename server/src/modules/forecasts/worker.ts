@@ -7,6 +7,7 @@ import { dayMs } from './forecast-model';
 import { loadForecastPolicy } from './forecast-policy';
 import { closeDemoDay, isDemoDatabase, refreshDemoForecast } from '../demo-day/demo-close';
 import { closedThrough, dayString } from '../demo-day/demo-report';
+import { ForecastMetrics, listenForecastMetrics } from './forecast-metrics';
 
 const maxDaysPerTick = 7;
 
@@ -19,33 +20,58 @@ async function main() {
   if (values['as-of'] && (!synthetic || values.watch || !validDate(values['as-of']))) throw Error('Historical dates require a one-off demo run');
   const policy = loadForecastPolicy();
   const db = new PrismaClient({ datasourceUrl: url });
+  const telemetry = new ForecastMetrics();
   try {
+    const stopMetrics = values.watch ? await listenForecastMetrics(telemetry, process.env.FORECAST_METRICS_PORT) : undefined;
+    try {
+      await run();
+    } finally {
+      await stopMetrics?.();
+    }
+  } finally {
+    await db.$disconnect();
+  }
+
+  async function run() {
     do {
+      const started = performance.now();
       try {
-        if (synthetic) {
-          let closed = 0;
-          if (values.watch && process.env.DEMO_AUTO_CLOSE === 'true') {
-            const through = closedThrough(new Date());
-            for (; closed < maxDaysPerTick; closed++) {
-              const result = await closeDemoDay(db, { through, policy });
-              if (result.status === 'no-active-stock') throw new Error('No active demo stock for daily closing');
-              if (result.status !== 'closed') break;
-              console.log(JSON.stringify({ synthetic: true, ...result }));
-            }
-          }
-          if (!closed) console.log(JSON.stringify(await refreshDemoForecast(db, policy, values['as-of'])));
-        } else {
-          const day = dayString(new Date(Date.now() - dayMs));
-          console.log(JSON.stringify({ day, synthetic, ...await runForecastPipeline(db, new Date(day), synthetic, policy) }));
-        }
+        const day = await runCycle();
+        telemetry.succeeded((performance.now() - started) / 1000, day);
       } catch (error) {
+        telemetry.failed((performance.now() - started) / 1000);
         if (!values.watch) throw error;
         console.error('Forecast and recommendation pipeline failed',
           error instanceof Error && error.constructor === Error ? error.message : error instanceof Error ? error.name : 'unknown error');
       }
       if (values.watch) await delay(15 * 60_000);
     } while (values.watch);
-  } finally { await db.$disconnect(); }
+  }
+
+  async function runCycle() {
+    if (!synthetic) {
+      const day = dayString(new Date(Date.now() - dayMs));
+      console.log(JSON.stringify({ day, synthetic, ...await runForecastPipeline(db, new Date(day), synthetic, policy) }));
+      return day;
+    }
+
+    let day: string | undefined;
+    if (values.watch && process.env.DEMO_AUTO_CLOSE === 'true') {
+      const through = closedThrough(new Date());
+      for (let closed = 0; closed < maxDaysPerTick; closed++) {
+        const result = await closeDemoDay(db, { through, policy });
+        if (result.status === 'no-active-stock') throw new Error('No active demo stock for daily closing');
+        if (result.status !== 'closed') break;
+        day = result.day;
+        console.log(JSON.stringify({ synthetic: true, ...result }));
+      }
+    }
+    if (day) return day;
+
+    const forecast = await refreshDemoForecast(db, policy, values['as-of']);
+    console.log(JSON.stringify(forecast));
+    return forecast.day;
+  }
 }
 
 main().catch(error => { console.error(error); process.exitCode = 1; });

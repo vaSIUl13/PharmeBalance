@@ -49,6 +49,7 @@ export type Drug = {
 };
 
 export type DrugPage = { items: Drug[]; next: number | null };
+export type CreateDrugInput = Pick<Drug, "sku" | "name" | "dosageForm" | "strength" | "unit">;
 
 export type CreatePharmacyInput = {
   code?: string;
@@ -59,6 +60,7 @@ export type CreatePharmacyInput = {
   longitude: number;
   externalRecordIds?: number[];
 };
+export type UpdatePharmacyInput = Partial<Omit<CreatePharmacyInput, "code" | "externalRecordIds">>;
 
 export type AuditEventType =
   | "LOGIN" | "ACCOUNT_CREATED" | "ACCOUNT_BLOCKED" | "ROLE_CHANGED" | "ROLE_PERMISSION_CHANGED" | "PHARMACY_ASSIGNED"

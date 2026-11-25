@@ -5,6 +5,9 @@ import { test } from 'node:test';
 import type { Prisma, PrismaClient } from '@prisma/client';
 import { PrismaService } from '../src/database/prisma.service';
 import { PharmaciesService } from '../src/modules/pharmacies/pharmacies.service';
+import { DrugsService } from '../src/modules/drugs/drugs.service';
+import { parsePharmacyUpdate } from '../src/modules/pharmacies/dto/pharmacy-update.dto';
+import { parseDrugCreate, parseDrugUpdate } from '../src/modules/drugs/dto/drug-write.dto';
 import { parseDrlz, simulate } from './unit/catalog-scripts';
 
 type SourceAdapter<Row> = {
@@ -46,6 +49,8 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
   let demoUploaderId: number | undefined;
   let demoPharmacyId: number | undefined;
   let demoDrugId: number | undefined;
+  let localDrugId: number | undefined;
+  let neighboringPharmacyId: number | undefined;
 
   t.after(async () => {
     try {
@@ -62,11 +67,18 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
       }
       if (demoUploaderId) await db.userAccount.delete({ where: { userId: demoUploaderId } });
       if (demoDrugId) await db.drug.delete({ where: { drugId: demoDrugId } });
+      if (localDrugId) await db.drug.delete({ where: { drugId: localDrugId } });
       if (adminId) {
         await db.auditLog.deleteMany({ where: { userId: adminId } });
         await db.userAccount.delete({ where: { userId: adminId } });
       }
       if (syncAdminId) await db.userAccount.delete({ where: { userId: syncAdminId } });
+      if (neighboringPharmacyId) {
+        await db.pharmacyDistance.deleteMany({ where: { OR: [
+          { fromPharmacyId: neighboringPharmacyId }, { toPharmacyId: neighboringPharmacyId },
+        ] } });
+        await db.pharmacy.delete({ where: { pharmacyId: neighboringPharmacyId } });
+      }
       if (pharmacyId) await db.pharmacy.delete({ where: { pharmacyId } });
     } finally { await db.$disconnect(); }
   });
@@ -139,6 +151,51 @@ test('catalog and demo persistence against isolated PostgreSQL', async (t) => {
     assert.equal((await synchronize(db, adapter(), { apply: true })).updated, 1);
     assert.equal((await db.pharmacy.findUniqueOrThrow({ where: { pharmacyId } })).address, data.address);
     assert.equal((await db.externalPharmacy.findUniqueOrThrow({ where: { id: external.id } })).pharmacyId, pharmacyId);
+
+    assert.throws(() => parsePharmacyUpdate({ isActive: true }), /Unsupported field/);
+    assert.throws(() => parsePharmacyUpdate({ latitude: 100 }), /Invalid latitude/);
+    const neighbor = await db.pharmacy.create({ data: { ...data, code: 'NEAR-' + id, isActive: false } });
+    neighboringPharmacyId = neighbor.pharmacyId;
+    const pairs = [
+      { fromPharmacyId: pharmacyId, toPharmacyId: neighboringPharmacyId },
+      { fromPharmacyId: neighboringPharmacyId, toPharmacyId: pharmacyId },
+    ];
+    for (const pair of pairs) await db.pharmacyDistance.create({ data: { ...pair, distanceKm: 10, source: 'OSRM' } });
+    const edits = () => db.auditLog.count({ where: { userId: admin.userId, eventType: 'REFERENCE_EDITED' } });
+    const beforeEdit = await edits();
+    await service.update(pharmacyId, parsePharmacyUpdate({ latitude: 49.84 }), admin.userId);
+    assert.equal(await edits(), beforeEdit);
+    const renamed = await service.update(pharmacyId, parsePharmacyUpdate({ name: 'Updated location' }), admin.userId);
+    assert.equal(renamed.name, 'Updated location');
+    assert.equal(await db.pharmacyDistance.count({ where: { OR: pairs, isActual: true } }), 2);
+    const moved = await service.update(pharmacyId, parsePharmacyUpdate({ latitude: 49.85 }), admin.userId);
+    assert.equal(moved.latitude.toString(), '49.85');
+    assert.equal(moved.code, data.code);
+    assert.equal(moved.isActive, false);
+    assert.equal(await db.pharmacyDistance.count({ where: { OR: pairs, isActual: false } }), 2);
+    assert.equal(await edits(), beforeEdit + 2);
+    assert.equal((await db.externalPharmacy.findUniqueOrThrow({ where: { id: external.id } })).pharmacyId, pharmacyId);
+  });
+
+  await t.test('local SKU edits keep identity and record changes in the audit log', async () => {
+    assert(adminId);
+    const service = new DrugsService(db);
+    const input = parseDrugCreate({ sku: 'net-' + id, name: 'Local product', dosageForm: 'capsules', unit: 'pack', strength: '250 mg' });
+    assert.throws(() => parseDrugCreate({ ...input, sku: 'SYN-123' }), /Invalid SKU/);
+    assert.throws(() => parseDrugUpdate({ name: 'Changed', unit: 'capsule' }), /Unsupported field/);
+    const audits = () => db.auditLog.count({ where: { userId: adminId, eventType: 'REFERENCE_EDITED' } });
+    const before = await audits();
+    const drug = await service.create(input, adminId);
+    localDrugId = drug.drugId;
+    assert.equal(drug.sku, input.sku.toUpperCase());
+    assert.equal(drug.registration, null);
+    await assert.rejects(service.create(input, adminId), /SKU already exists/);
+    await service.update(drug.drugId, parseDrugUpdate({ name: drug.name }), adminId);
+    const changed = await service.update(drug.drugId, parseDrugUpdate({ name: 'New label' }), adminId);
+    assert.equal(changed.name, 'New label');
+    assert.equal(changed.strength, '250 mg');
+    assert.equal(changed.unit, 'pack');
+    assert.equal(await audits(), before + 2);
   });
 
   await t.test('registration is stable, pack selection is explicit, and duplicate SKU mapping is rejected', async () => {

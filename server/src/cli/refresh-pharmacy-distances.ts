@@ -1,4 +1,4 @@
-import { PrismaClient, Source } from '@prisma/client';
+import { Prisma, PrismaClient, Source } from '@prisma/client';
 
 const batchSize = 50;
 
@@ -16,6 +16,7 @@ async function main() {
       select: { pharmacyId: true, longitude: true, latitude: true } });
     let updated = 0;
     let unroutable = 0;
+    let stale = 0;
     for (let start = 0; start < locations.length; start += batchSize) {
       const sources = locations.slice(start, start + batchSize);
       for (let offset = 0; offset < locations.length; offset += batchSize) {
@@ -36,9 +37,23 @@ async function main() {
           throw Error('Invalid OSRM distance matrix');
         }
         await db.$transaction(async tx => {
+          const ids = [...new Set(points.map(point => point.pharmacyId))];
+          const current = await tx.$queryRaw<typeof locations>`
+            SELECT pharmacy_id AS "pharmacyId", longitude, latitude FROM pharmacy
+            WHERE is_active AND pharmacy_id IN (${Prisma.join(ids)})
+            ORDER BY pharmacy_id FOR SHARE`;
+          const byId = new Map(current.map(point => [point.pharmacyId, point]));
+          const unchanged = new Set(points.filter(point => {
+            const live = byId.get(point.pharmacyId);
+            return live?.latitude.eq(point.latitude) && live.longitude.eq(point.longitude);
+          }).map(point => point.pharmacyId));
           for (const [sourceIndex, from] of sources.entries()) {
             for (const [targetIndex, to] of destinations.entries()) {
               if (from.pharmacyId === to.pharmacyId) continue;
+              if (!unchanged.has(from.pharmacyId) || !unchanged.has(to.pharmacyId)) {
+                stale++;
+                continue;
+              }
               const pair = { fromPharmacyId: from.pharmacyId, toPharmacyId: to.pharmacyId };
               const meters = distances[sourceIndex][targetIndex];
               if (typeof meters !== 'number') {
@@ -54,7 +69,7 @@ async function main() {
         }, { timeout: 30_000 });
       }
     }
-    console.log(JSON.stringify({ pharmacies: locations.length, updated, unroutable }));
+    console.log(JSON.stringify({ pharmacies: locations.length, updated, unroutable, stale }));
   } finally {
     await db.$disconnect();
   }

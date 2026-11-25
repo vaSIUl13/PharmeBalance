@@ -1,5 +1,5 @@
 import { apiRequest, authRequest } from "@/lib/auth";
-import type { Principal, TransferDetail, TransferResult } from "@/lib/head/types";
+import type { Principal, TransferDetail, TransferResult, TransferStatus } from "@/lib/head/types";
 
 export function loadPrincipal(): Promise<Principal> {
   return authRequest<Principal>("me");
@@ -7,6 +7,19 @@ export function loadPrincipal(): Promise<Principal> {
 
 export function loadTransfer(id: number): Promise<TransferDetail> {
   return apiRequest<TransferDetail>("recommendations/" + id);
+}
+
+type TransferAction = {
+  actionId: number;
+  userId: number;
+  actionTime: string;
+  quantity: number | null;
+  comment: string | null;
+  actionType: { code: string; fromStatus: TransferStatus; toStatus: TransferStatus };
+};
+
+export function loadTransferHistory(id: number): Promise<TransferAction[]> {
+  return apiRequest("recommendations/" + id + "/history");
 }
 
 export type TransferRoute =

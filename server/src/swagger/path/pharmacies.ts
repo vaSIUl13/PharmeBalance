@@ -1,5 +1,13 @@
 import { applyDecorators } from '@nestjs/common';
-import { ApiBody, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBadRequestResponse, ApiBody, ApiForbiddenResponse, ApiNotFoundResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+
+const editableFields = {
+  name: { type: 'string', maxLength: 100 },
+  city: { type: 'string', maxLength: 60 },
+  address: { type: 'string', maxLength: 150 },
+  latitude: { type: 'number', minimum: -90, maximum: 90 },
+  longitude: { type: 'number', minimum: -180, maximum: 180 },
+};
 
 export const pharmaciesDocs = {
   controller: ApiTags('pharmacies'),
@@ -25,12 +33,14 @@ export const pharmaciesDocs = {
     ApiBody({ schema: { type: 'object', required: ['name', 'city', 'address', 'latitude', 'longitude'],
         properties: {
           code: { type: 'string', maxLength: 20, description: 'Required for manual entries; generated when linked to an external record' },
-          name: { type: 'string', maxLength: 100 },
-          city: { type: 'string', maxLength: 60 }, address: { type: 'string', maxLength: 150 },
-          latitude: { type: 'number', minimum: -90, maximum: 90 },
-          longitude: { type: 'number', minimum: -180, maximum: 180 },
+          ...editableFields,
           externalRecordIds: { type: 'array', items: { type: 'integer', minimum: 1 }, maxItems: 10 },
         },
       } }),
+  ),
+  update: applyDecorators(
+    ApiOperation({ summary: 'Update managed pharmacy details and invalidate distances after a coordinate change' }),
+    ApiBody({ schema: { type: 'object', minProperties: 1, additionalProperties: false, properties: editableFields } }),
+    ApiBadRequestResponse(), ApiForbiddenResponse(), ApiNotFoundResponse(),
   ),
 };

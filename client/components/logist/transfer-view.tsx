@@ -12,6 +12,7 @@ import { DispatchDialog } from "./dispatch-dialog";
 import { ReceiveDialog } from "@/components/head/receive-dialog";
 import { TripStatus } from "./trip-parts";
 import { TripRoute } from "./trip-route";
+import { TransferHistory } from "./transfer-history";
 
 type Viewer = { role: "logist" } | { role: "manager" } | { role: "head"; receiverPharmacy?: number };
 const defaultViewer = { role: "logist" } as const;
@@ -83,6 +84,7 @@ export function TransferView({ id, viewer = defaultViewer }: { id: number; viewe
                       {data.status === "CANCELLED" && <Notice tone="neutral">Рейс скасовано, резерв знято.</Notice>}
                     </div>
                   </div>
+                  {viewer.role === "manager" && <TransferHistory key={data.recommendationId} id={data.recommendationId} unit={drug.unit} />}
                   {dispatching && <DispatchDialog trip={data} onClose={() => setDispatching(false)} onChanged={changed} />}
                   {receiving && <ReceiveDialog transfer={data} onClose={() => setReceiving(false)} onChanged={changed} />}
                 </>

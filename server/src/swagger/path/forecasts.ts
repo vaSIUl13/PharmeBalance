@@ -9,7 +9,7 @@ export const forecastsDocs = {
     ApiTags('forecasts'),
   ),
   list: ApiOperation({ summary: '14-day demand, probability below MSL and data quality by pharmacy and SKU' }),
-  risks: ApiOperation({ summary: 'Positions at risk of falling below MSL, highest probability first' }),
+  risks: ApiOperation({ summary: 'Shortage risks ordered by severity, then by descending probability' }),
   surpluses: ApiOperation({ summary: 'Current surplus above Max and estimated surplus at the end of the horizon' }),
   classes: ApiOperation({ summary: 'Dated ABC and XYZ classes with turnover and variation diagnostics' }),
 };

@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: server
+    env:
+      DATABASE_URL: postgresql://pharme_ci:pharme_ci@127.0.0.1:5432/pharme_ci_test
+      AUTH_TEST_DATABASE_URL: postgresql://pharme_ci:pharme_ci@127.0.0.1:5432/pharme_ci_test
+      CATALOG_TEST_DATABASE_URL: postgresql://pharme_ci:pharme_ci@127.0.0.1:5432/pharme_ci_test
+      AUTH_TEST_REDIS_URL: redis://127.0.0.1:6379
+      AUTH_TEST_MAILPIT: '0'
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: pharme_ci
+          POSTGRES_PASSWORD: pharme_ci
+          POSTGRES_DB: pharme_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pharme_ci -d pharme_ci_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - run: npm run db:generate
+      - run: npm run db:validate
+      - run: npm run db:migrate
+      - run: npm run build
+      - run: npm run build:test
+      - run: node --test dist-test/test/unit/*.test.js
+      - run: >-
+          node --test --test-concurrency=1
+          dist-test/test/auth.integration.js
+          dist-test/test/catalog.integration.js
+          dist-test/test/demo-day.integration.js
+          dist-test/test/forecast-isolation.integration.js
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: docker build --tag pharmabalance-client:ci client
+      - run: docker build --target migrations --tag pharmabalance-migrations:ci server
+      - run: docker build --tag pharmabalance-server:ci server

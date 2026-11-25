@@ -17,6 +17,10 @@ test('OpenAPI describes session access, stock schemas, multipart imports and bin
   assert.equal(cookie.type, 'apiKey');
   assert.equal(cookie.in, 'cookie');
   assert.deepEqual(paths['/api/v1/health'].get?.security, []);
+  const readiness = paths['/api/v1/health/ready'].get;
+  assert.deepEqual(readiness?.security, []);
+  assert.ok(readiness.responses[503]);
+  assert.equal(paths['/api/v1/metrics'], undefined);
   assert.deepEqual(paths['/api/v1/auth/login'].post?.security, []);
   assert.equal(paths['/api/v1/auth/me'].get?.security, undefined);
 
