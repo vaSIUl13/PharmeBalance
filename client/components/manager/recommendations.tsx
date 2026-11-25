@@ -1,6 +1,7 @@
 "use client";
 
 import { formatTripDistance } from "@/lib/logist/format";
+import Link from "next/link";
 import { useState } from "react";
 import { loadTransfers } from "@/lib/head/api";
 import { formatDateTime, formatNumber, transferStatuses } from "@/lib/head/format";
@@ -114,7 +115,13 @@ export function Recommendations() {
                           const view = transferStatuses[trip.status];
                           return (
                             <tr key={trip.recommendationId} className="border-b border-[#e2e8e5] last:border-0">
-                              <td className="px-4 py-3 tabular-nums text-[#475569]">{trip.recommendationId}</td>
+                              <td className="px-4 py-3 tabular-nums">
+                                <Link href={"/manager/transfer/" + trip.recommendationId}
+                                  aria-label={"Картка та історія рейсу №" + trip.recommendationId}
+                                  className="font-medium text-[#0f766e] underline decoration-[#99f6e4] underline-offset-2 hover:decoration-current">
+                                  {trip.recommendationId}
+                                </Link>
+                              </td>
                               <td className="px-2 py-3"><p className="font-medium">{trip.donorStock.drug.name}</p>
                                 <p className="text-xs tabular-nums text-[#64748b]">{trip.donorStock.drug.sku}</p></td>
                               <td className="px-2 py-3">{trip.donorStock.pharmacy.name} → {trip.recipientStock.pharmacy.name}<p className="text-xs text-[#64748b]">{formatTripDistance(trip)}</p></td>

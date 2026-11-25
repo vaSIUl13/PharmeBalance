@@ -66,6 +66,7 @@ export async function createFixture(t: TestContext) {
     await db.recommendationAction.deleteMany({ where: { recommendationId: { in: transferIds } } });
     await db.recommendationAction.deleteMany({ where: { recommendation: { forecast: { runId: { in: forecastRunIds } } } } });
     await db.recommendation.deleteMany({ where: { forecast: { runId: { in: forecastRunIds } } } });
+    await db.risk.deleteMany({ where: { forecast: { runId: { in: forecastRunIds } } } });
     await db.forecast.deleteMany({ where: { runId: { in: forecastRunIds } } });
     await db.forecastRun.deleteMany({ where: { id: { in: forecastRunIds } } });
     await db.sale.deleteMany({ where: { import: { uploadedBy: { in: ids } } } });

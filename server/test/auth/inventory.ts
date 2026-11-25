@@ -31,8 +31,13 @@ export async function testInventory(t: TestContext, context: SignedInFixture) {
       asOf: new Date('2001-01-01'), version: run, synthetic: false, policy: {},
     } });
     forecastRunIds.push(forecastRun.id);
-    await db.forecast.createMany({ data: stockIds.map(stockId => ({ stockId, modelVersion: 'fixture',
-      runId: forecastRun.id, predictedDemand: 5, shortageProbability: 0.5, currentSurplus: 2 })) });
+    const forecasts = await db.forecast.createManyAndReturn({ data: stockIds.map(stockId => ({ stockId,
+      modelVersion: 'fixture', runId: forecastRun.id, predictedDemand: 5, shortageProbability: 0.5, currentSurplus: 2 })),
+      select: { forecastId: true },
+    });
+    await db.risk.createMany({ data: forecasts.map(({ forecastId }) => ({
+      forecastId, positionType: 'SHORTAGE', riskLevel: 'MEDIUM',
+    })) });
     for (const endpoint of ['forecasts','risks','classifications','surpluses']) {
       const route = '/' + endpoint + '?asOf=2001-01-01';
       const own = await request(route, { cookies: head });

@@ -5,6 +5,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { setupSwagger } from './swagger/setup';
 import { validateAuthConfig } from './modules/auth/auth-config';
+import { HttpMetricsService } from './modules/health/http-metrics.service';
 
 async function bootstrap(): Promise<void> {
   if (existsSync('.env')) process.loadEnvFile('.env');
@@ -13,6 +14,7 @@ async function bootstrap(): Promise<void> {
   const trustedProxies = process.env.AUTH_TRUSTED_PROXIES?.split(',').map((value) => value.trim()).filter(Boolean);
   if (trustedProxies?.length) app.set('trust proxy', trustedProxies);
   app.enableShutdownHooks();
+  app.use(app.get(HttpMetricsService).observe);
   app.setGlobalPrefix('api/v1');
   if (process.env.NODE_ENV !== 'production') setupSwagger(app);
   const port = Number(process.env.PORT ?? 3001);

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  ...(process.env.NEXT_STANDALONE === "1" ? { output: "standalone" } : {}),
   async rewrites() {
     const api = process.env.NEST_API_ORIGIN ?? "http://127.0.0.1:3001";
     return [

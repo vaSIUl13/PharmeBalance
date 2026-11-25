@@ -8,6 +8,7 @@ import { testInventory } from './auth/inventory';
 import { testRedistribution } from './auth/redistribution';
 import { testRegistration } from './auth/registration';
 import { testSessions } from './auth/sessions';
+import { testRiskOrdering } from './auth/risk-order';
 
 test('auth against PostgreSQL and Redis', async (t) => {
   const fixture = await createFixture(t);
@@ -17,6 +18,7 @@ test('auth against PostgreSQL and Redis', async (t) => {
   await testAdministration(t, signedIn);
   const manager = await testInventory(t, signedIn);
   const context = { ...signedIn, manager };
+  await testRiskOrdering(t, context);
   await testRedistribution(t, context);
   await testSessions(t, context);
 });

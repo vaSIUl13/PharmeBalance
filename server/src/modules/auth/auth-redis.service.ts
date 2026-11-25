@@ -30,6 +30,11 @@ export class AuthRedisService implements OnModuleDestroy {
     return this.client;
   }
 
+  async ping() {
+    const client = await this.ready();
+    await client.withAbortSignal(AbortSignal.timeout(1000)).ping();
+  }
+
   async limit(action: string, subject: string, maximum: number, seconds: number) {
     let count: unknown;
     try {

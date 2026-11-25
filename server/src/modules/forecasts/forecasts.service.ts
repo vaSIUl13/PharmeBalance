@@ -17,13 +17,13 @@ export class ForecastsService {
     const run = await this.db.forecastRun.findFirst({ where: { synthetic, asOf }, orderBy: [{ asOf: 'desc' }, { id: 'desc' }] });
     if (!run) return { run: null, items: [], next: null };
     const where: Prisma.ForecastWhereInput = { runId: run.id, stock: { pharmacyId, pharmacy: pharmacyScope(user) } };
-    if (view === 'risks') where.OR = [
-      { shortageProbability: { gt: 0 } }, { quantity: { lt: this.db.forecast.fields.msl } }, { risk: { daysToStockout: { not: null } } },
-    ];
+    if (view === 'risks') where.risk = { positionType: 'SHORTAGE' };
     if (view === 'surpluses') where.OR = [{ currentSurplus: { gt: 0 } }, { projectedSurplus: { gt: 0 } }];
     const rows = await this.db.forecast.findMany({ where, take: 51,
       ...(after ? { cursor: { forecastId: after }, skip: 1 } : {}),
-      orderBy: view === 'risks' ? [{ shortageProbability: { sort: 'desc', nulls: 'last' } }, { forecastId: 'asc' }] : { forecastId: 'asc' },
+      orderBy: view === 'risks'
+        ? [{ risk: { riskLevel: 'desc' } }, { shortageProbability: { sort: 'desc', nulls: 'last' } }, { forecastId: 'asc' }]
+        : { forecastId: 'asc' },
       include: { risk: true, stock: { select: { pharmacyId: true, drug: { select: { sku: true, name: true } } } } },
     });
     const items = rows.slice(0, 50);

@@ -22,6 +22,8 @@
 !/public/assets/icons/
 /public/assets/icons/*
 !/public/assets/icons/bell.svg
+!/public/assets/icons/arrow_left.svg
+!/public/assets/icons/arrow_right.svg
 
 # production
 /build

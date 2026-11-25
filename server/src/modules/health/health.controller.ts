@@ -1,5 +1,5 @@
 import { Public } from '../auth/auth.guard';
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Header } from '@nestjs/common';
 import { healthDocs } from '../../swagger/path/health';
 import { HealthResponseDto } from './dto/health-response.dto';
 import { HealthService } from './health.service';
@@ -14,5 +14,13 @@ export class HealthController {
   @Get()
   check(): HealthResponseDto {
     return this.healthService.check();
+  }
+
+  @healthDocs.ready
+  @Public()
+  @Header('Cache-Control', 'no-store')
+  @Get('ready')
+  ready(): Promise<HealthResponseDto> {
+    return this.healthService.ready();
   }
 }

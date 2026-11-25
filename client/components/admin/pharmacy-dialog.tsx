@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState, type FormEvent } from "react";
-import { createPharmacy, searchExternalPharmacies } from "@/lib/admin/api";
-import type { CreatePharmacyInput, ExternalPharmacy } from "@/lib/admin/types";
+import { createPharmacy, searchExternalPharmacies, updatePharmacy } from "@/lib/admin/api";
+import type { AdminPharmacy, ExternalPharmacy } from "@/lib/admin/types";
 import { ApiError } from "@/lib/auth";
 import { buttonClasses, inputClasses, Notice } from "@/components/head/ui";
 import { Modal } from "./modal";
@@ -34,9 +34,16 @@ function coordinate(value: string, bound: number) {
   return /^-?\d+(\.\d+)?$/.test(clean) && Math.abs(number) <= bound ? number : null;
 }
 
-export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (name: string) => void }) {
+export function PharmacyDialog({ pharmacy, onClose, onSaved }: {
+  pharmacy?: AdminPharmacy;
+  onClose: () => void;
+  onSaved: (name: string) => void;
+}) {
   const formId = useId();
-  const [values, setValues] = useState(initialValues);
+  const [values, setValues] = useState(() => pharmacy ? {
+    code: pharmacy.code, name: pharmacy.name, city: pharmacy.city, address: pharmacy.address,
+    latitude: pharmacy.latitude, longitude: pharmacy.longitude,
+  } : initialValues);
   const [query, setQuery] = useState("");
   const [lastQuery, setLastQuery] = useState("");
   const [items, setItems] = useState<ExternalPharmacy[] | null>(null);
@@ -55,6 +62,7 @@ export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; on
   });
 
   useEffect(() => {
+    if (pharmacy) return;
     let active = true;
     void searchExternalPharmacies("").then(page => {
       if (!active) return;
@@ -66,7 +74,7 @@ export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; on
       if (active) setSearching(false);
     });
     return () => { active = false; };
-  }, []);
+  }, [pharmacy]);
 
   async function search(event?: FormEvent<HTMLFormElement>, after?: number) {
     event?.preventDefault();
@@ -105,32 +113,52 @@ export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; on
     }
     setSaving(true);
     setError("");
-    const input: CreatePharmacyInput = {
-      code: selected ? "EXT-" + selected.id : values.code.trim(), name: values.name.trim(), city: values.city.trim(), address: values.address.trim(),
-      latitude, longitude,
-      externalRecordIds: selected ? [selected.id] : undefined,
-    };
+    const details = { name: values.name.trim(), city: values.city.trim(), address: values.address.trim(), latitude, longitude };
     try {
-      const pharmacy = await createPharmacy(input);
-      onCreated(pharmacy.name);
+      const changes = pharmacy ? Object.fromEntries(Object.entries(details).filter(([name, value]) => {
+        switch (name) {
+          case "latitude":
+          case "longitude":
+            return value !== Number(pharmacy[name]);
+          case "name":
+          case "city":
+          case "address":
+            return value !== pharmacy[name];
+          default:
+            return false;
+        }
+      })) : null;
+      if (changes && !Object.keys(changes).length) {
+        onClose();
+        return;
+      }
+      const saved = pharmacy && changes ? await updatePharmacy(pharmacy.pharmacyId, changes) : await createPharmacy({
+        ...details, code: selected ? "EXT-" + selected.id : values.code.trim(),
+        externalRecordIds: selected ? [selected.id] : undefined,
+      });
+      onSaved(saved.name);
     } catch (failure) {
       const status = failure instanceof ApiError ? failure.status : undefined;
       setError(status === 409 ? "Код аптеки вже використовується або запис довідника вже прив’язано."
         : status === 400 ? "Перевірте код, адресу та координати аптеки."
-        : status === 403 ? "У вас немає дозволу додавати аптеки." : "Не вдалося створити аптеку. Спробуйте ще раз.");
+        : status === 403 ? "У вас немає дозволу змінювати довідник аптек."
+        : status === 404 ? "Аптеку не знайдено." : "Не вдалося зберегти аптеку. Спробуйте ще раз.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal wide title="Додати аптеку" subtitle="Виберіть аптеку з довідника або заповніть дані вручну." busy={saving} onClose={onClose}
+    <Modal wide={!pharmacy} title={pharmacy ? "Редагувати аптеку" : "Додати аптеку"}
+      subtitle={pharmacy?.code ?? "Виберіть аптеку з довідника або заповніть дані вручну."} busy={saving} onClose={onClose}
       footer={<>
         {error && <div className="w-full"><Notice tone="danger">{error}</Notice></div>}
         <button type="button" className={buttonClasses.secondary} onClick={onClose} disabled={saving}>Скасувати</button>
-        <button form={formId} type="submit" className={buttonClasses.primary} disabled={saving}>{saving ? "Зберігаємо…" : "Додати аптеку"}</button>
+        <button form={formId} type="submit" className={buttonClasses.primary} disabled={saving}>
+          {saving ? "Зберігаємо…" : pharmacy ? "Зберегти" : "Додати аптеку"}
+        </button>
       </>}>
-      <section aria-label="Зовнішній довідник аптек" className="space-y-3 border-b border-[#e2e8e5] px-5 py-4">
+      {!pharmacy && <section aria-label="Зовнішній довідник аптек" className="space-y-3 border-b border-[#e2e8e5] px-5 py-4">
         <form className="flex flex-wrap gap-2" onSubmit={search}>
           <input className={inputClasses + " min-w-0 flex-1"} aria-label="Пошук у зовнішньому довіднику"
             placeholder="Назва, місто або адреса" maxLength={100} value={query} onChange={event => setQuery(event.target.value)} />
@@ -157,7 +185,7 @@ export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; on
         {next !== null && <button type="button" className={buttonClasses.secondary + " mt-2"} disabled={searching || saving}
           onClick={() => void search(undefined, next)}>Показати ще</button>}
         {items && items.length > 0 && <p className="text-xs text-[#475569]">Зелені точки можна додати, сірі вже прив’язані до мережі.</p>}
-      </section>
+      </section>}
       <form id={formId} onSubmit={submit}>
         <div className="space-y-3 px-5 py-4">
           {selected && <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
@@ -169,7 +197,7 @@ export function PharmacyDialog({ onClose, onCreated }: { onClose: () => void; on
             <p className="text-sm text-[#475569]">У довіднику бракує даних. Заповніть порожні поля перед збереженням.</p>
           )}
           <div className="grid gap-3 sm:grid-cols-2">
-            {fields.filter(field => !selected || field.name !== "code").map(field => <label key={field.name} className="grid gap-1 text-sm font-medium">
+            {fields.filter(field => field.name !== "code" || (!selected && !pharmacy)).map(field => <label key={field.name} className="grid gap-1 text-sm font-medium">
               {field.label}
               <input className={inputClasses} required disabled={saving} value={values[field.name]}
                 {...("bound" in field ? { inputMode: "decimal" as const }

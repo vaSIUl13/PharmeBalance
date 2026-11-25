@@ -5,6 +5,7 @@ import { loadDrugs } from "@/lib/admin/api";
 import type { Drug } from "@/lib/admin/types";
 import { useResource } from "@/lib/head/use-resource";
 import { Badge, buttonClasses, Card, EmptyState, inputClasses, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
+import { DrugDialog } from "./drug-dialog";
 
 type Listing = { query: string; items: Drug[]; next: number | null };
 
@@ -18,6 +19,8 @@ export function Drugs() {
   const [listing, setListing] = useState<Listing | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [editing, setEditing] = useState<Drug | "new" | null>(null);
+  const [message, setMessage] = useState("");
 
   const query = listing?.query ?? "";
   const items = listing ? listing.items : first.data?.items ?? [];
@@ -38,7 +41,12 @@ export function Drugs() {
 
   return (
     <>
-      <PageHeader title="Довідник препаратів" subtitle="Препарати мережі з реєстраційними даними ДРЛЗ" />
+      <PageHeader title="Довідник препаратів" subtitle="Препарати мережі й реєстраційні дані ДРЛЗ" actions={
+        <button type="button" className={buttonClasses.primary} disabled={busy} onClick={() => setEditing("new")}>
+          Додати локальний препарат
+        </button>
+      } />
+      {message && <Notice tone="success">{message}</Notice>}
       {failed && <Notice tone="danger">Не вдалося завантажити препарати. Спробуйте ще раз.</Notice>}
       <Card>
         <form className="flex flex-wrap items-end gap-2 border-b border-[#e2e8e5] p-4" role="search"
@@ -64,6 +72,7 @@ export function Drugs() {
                         <th scope="col" className="px-2 py-2 font-medium">Форма й дозування</th>
                         <th scope="col" className="px-2 py-2 font-medium">МНН / АТХ</th>
                         <th scope="col" className="px-4 py-2 font-medium">Статус</th>
+                        <th scope="col" className="px-4 py-2 font-medium">Дії</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -78,6 +87,10 @@ export function Drugs() {
                               : "—"}
                           </td>
                           <td className="px-4 py-3"><Badge tone={drug.isActive ? "success" : "neutral"}>{drug.isActive ? "Активний" : "Неактивний"}</Badge></td>
+                          <td className="px-4 py-3">
+                            <button type="button" className={buttonClasses.secondary} aria-label={`Редагувати назву «${drug.name}»`}
+                              disabled={busy} onClick={() => setEditing(drug)}>Редагувати</button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -95,6 +108,12 @@ export function Drugs() {
             )}
         </ResourceGate>
       </Card>
+      {editing && <DrugDialog drug={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={drug => {
+        setEditing(null);
+        setText(drug.sku);
+        setMessage(`Препарат «${drug.name}» ${editing === "new" ? "додано" : "оновлено"}.`);
+        void run(drug.sku, undefined, []);
+      }} />}
     </>
   );
 }
