@@ -66,7 +66,7 @@ export function NotificationInbox({ role }: { role: string }) {
   }
 
   function activate(item: InboxItem) {
-    const href = notificationLink(role, item.recommendationId);
+    const href = notificationLink(role, item);
     void update(async () => {
       if (!item.readAt) {
         await readNotification(item.id);

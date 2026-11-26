@@ -32,6 +32,7 @@ export type ForecastItem = {
   shortageProbability: string | null;
   currentSurplus: number | null;
   projectedSurplus: number | null;
+  redistributionReason?: "STOCK_CHANGED_SINCE_FORECAST" | "NEED_COVERED" | "DISTANCE_UNAVAILABLE" | "NO_DONOR_WITH_ENOUGH_SURPLUS" | null;
   risk: {
     positionType: PositionType;
     riskLevel: RiskLevel;

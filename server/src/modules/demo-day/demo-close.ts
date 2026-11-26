@@ -4,6 +4,7 @@ import type { Policy } from '../forecasts/forecast-model';
 import { administrators, networkManagers } from '../notifications/business-notifications';
 import { notifyUsers } from '../notifications/inbox.service';
 import { generateRecommendations } from '../recommendations/generate';
+import { applyDemoStockPulse } from './demo-intraday';
 import { archiveReport, dayString, kyivDate, nextDay, simulatePosition, type DailyReport, type SimulatedStock } from './demo-report';
 
 const transactionOptions = { timeout: 300_000, maxWait: 10_000 };
@@ -34,8 +35,8 @@ async function forecast(tx: Prisma.TransactionClient, day: string, policy: Polic
   return { ...result, recommendations };
 }
 
-export function refreshDemoForecast(db: PrismaClient, policy: Policy, expected?: string) {
-  return withDemoLock(db, async tx => {
+export function refreshDemoForecast(db: PrismaClient, policy: Policy, expected?: string, slot?: Date) {
+  return withDemoLock(db, async (tx, database) => {
     const day = await latestDemoDay(tx);
     if (!day || expected && expected !== day) throw new Error('Use the final sales day of the demo inventory snapshot');
     await lockDemoPharmacies(tx);
@@ -44,7 +45,9 @@ export function refreshDemoForecast(db: PrismaClient, policy: Policy, expected?:
       ORDER BY s.stock_id FOR UPDATE OF s`;
     const [clock] = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp()::timestamptz(3) AS now`;
     if (day > kyivDate(clock.now).date) throw new Error('Future forecast cutoff');
-    return { day, synthetic: true, ...await forecast(tx, day, policy, clock.now) };
+    const simulatedRisks = slot ? await applyDemoStockPulse(tx, database, slot, clock.now) : 0;
+    const [published] = await tx.$queryRaw<{ now: Date }[]>`SELECT clock_timestamp()::timestamptz(3) AS now`;
+    return { day, synthetic: true, simulatedRisks, ...await forecast(tx, day, policy, published.now) };
   });
 }
 

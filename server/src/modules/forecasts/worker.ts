@@ -8,6 +8,7 @@ import { loadForecastPolicy } from './forecast-policy';
 import { closeDemoDay, isDemoDatabase, refreshDemoForecast } from '../demo-day/demo-close';
 import { closedThrough, dayString } from '../demo-day/demo-report';
 import { ForecastMetrics, listenForecastMetrics } from './forecast-metrics';
+import { forecastSlot, untilNextForecastSlot } from './forecast-schedule';
 
 const maxDaysPerTick = 7;
 
@@ -44,7 +45,7 @@ async function main() {
         console.error('Forecast and recommendation pipeline failed',
           error instanceof Error && error.constructor === Error ? error.message : error instanceof Error ? error.name : 'unknown error');
       }
-      if (values.watch) await delay(15 * 60_000);
+      if (values.watch) await delay(untilNextForecastSlot(new Date()));
     } while (values.watch);
   }
 
@@ -55,9 +56,12 @@ async function main() {
       return day;
     }
 
+    const now = new Date();
+    const slot = values.watch && (process.env.DEMO_INTRADAY_RISKS ?? process.env.DEMO_AUTO_CLOSE) === 'true'
+      ? forecastSlot(now) : undefined;
     let day: string | undefined;
     if (values.watch && process.env.DEMO_AUTO_CLOSE === 'true') {
-      const through = closedThrough(new Date());
+      const through = closedThrough(now);
       for (let closed = 0; closed < maxDaysPerTick; closed++) {
         const result = await closeDemoDay(db, { through, policy });
         if (result.status === 'no-active-stock') throw new Error('No active demo stock for daily closing');
@@ -66,9 +70,9 @@ async function main() {
         console.log(JSON.stringify({ synthetic: true, ...result }));
       }
     }
-    if (day) return day;
+    if (day && !slot) return day;
 
-    const forecast = await refreshDemoForecast(db, policy, values['as-of']);
+    const forecast = await refreshDemoForecast(db, policy, values['as-of'], slot);
     console.log(JSON.stringify(forecast));
     return forecast.day;
   }

@@ -60,11 +60,15 @@ export async function archiveReport(database: string, report: DailyReport, direc
         row.closing < row.reserved || row.closing !== row.opening + row.received - row.sold + row.returned)) {
     throw new Error('Invalid daily demo report');
   }
+  return archiveDemoJson(database, 'demo-' + report.day, report, directory);
+}
+
+export async function archiveDemoJson(database: string, label: string, report: unknown, directory = process.env.DEMO_REPORT_DIR) {
   const json = JSON.stringify(report, null, 2) + '\n';
   const checksum = createHash('sha256').update(json).digest('hex');
   const databaseKey = createHash('sha256').update(database).digest('hex').slice(0, 12);
   const folder = resolve(directory || '../.local-cache/demo-reports', databaseKey);
-  const fileName = `demo-${report.day}-${checksum.slice(0, 12)}.json`;
+  const fileName = `${label}-${checksum.slice(0, 12)}.json`;
   const file = join(folder, fileName);
   await mkdir(folder, { recursive: true });
   const temporary = join(folder, randomUUID() + '.tmp');

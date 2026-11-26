@@ -4,7 +4,8 @@ import { ApiNoContentResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/s
 export const inboxDocs = {
   controller: ApiTags('notifications'),
   list: applyDecorators(
-    ApiOperation({ summary: 'List the signed-in user’s system notifications and unread count' }),
+    ApiOperation({ summary: 'List the signed-in user’s system notifications and unread count',
+      description: 'A recommendation batch includes recommendationIds. A manager can open the batch by passing its notification ID to GET /recommendations.' }),
     ApiQuery({ name: 'before', required: false, type: Number, description: 'Cursor returned as next by the previous page' }),
   ),
   read: applyDecorators(

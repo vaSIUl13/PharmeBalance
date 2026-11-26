@@ -12,7 +12,6 @@ async function mockApi(page: Page, principal: Principal, handler: (route: Route,
   await page.route("http://127.0.0.1:3310/api/v1/**", async route => {
     const path = new URL(route.request().url()).pathname.replace("/api/v1/", "");
     if (path === "auth/me") return route.fulfill({ json: principal });
-    if (path === "notifications/inbox") return route.fulfill({ json: { items: [], unread: 0, next: null } });
     await handler(route, path);
   });
 }
@@ -27,6 +26,7 @@ test("manager can sign in, confirm a transfer and read its history", async ({ pa
   } satisfies Omit<TransferDetail, "status">;
   const comment = "Перевірено менеджером";
   let status: TransferStatus = "CREATED";
+  let openedBatch = false;
   await mockApi(page, manager, async (route, path) => {
     const request = route.request();
     if (path === "auth/login") {
@@ -35,7 +35,13 @@ test("manager can sign in, confirm a transfer and read its history", async ({ pa
       expect(request.postDataJSON()).toEqual({ email: manager.email, password: "e2e-password" });
       return route.fulfill({ json: { mfaRequired: false } });
     }
-    if (path === "recommendations") return route.fulfill({ json: [{ ...transfer, status }] });
+    if (path === "notifications/inbox") return route.fulfill({ json: { items: [{ id: 88, title: "Готові рекомендації перерозподілу",
+      message: "Є одна нова рекомендація.", recommendationId: null, recommendationIds: [42], readAt: null, createdAt: timestamp }], unread: 1, next: null } });
+    if (path === "notifications/inbox/88/read") return route.fulfill({ status: 204 });
+    if (path === "recommendations") {
+      if (new URL(request.url()).searchParams.get("notificationId") === "88") openedBatch = true;
+      return route.fulfill({ json: [{ ...transfer, status }] });
+    }
     if (path === "recommendations/42") return route.fulfill({ json: { ...transfer, status } });
     if (path === "recommendations/42/route") return route.fulfill({ json: { status: "unavailable" } });
     if (path === "recommendations/42/actions/CONFIRM") {
@@ -62,7 +68,12 @@ test("manager can sign in, confirm a transfer and read its history", async ({ pa
   await page.getByLabel("Пароль", { exact: true }).fill("e2e-password");
   await page.getByRole("button", { name: "Увійти" }).click();
   await expect(page).toHaveURL(/\/manager\/dashboard$/);
-  await page.goto("/manager/recommendations");
+  await page.getByRole("button", { name: /Сповіщення/ }).click();
+  await page.getByRole("button", { name: /Готові рекомендації перерозподілу/ }).click();
+  await expect(page).toHaveURL(/\/manager\/recommendations\?notificationId=88$/);
+  await expect(page.getByText("Рекомендації зі сповіщення.")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Картка та історія рейсу №42" })).toBeVisible();
+  expect(openedBatch).toBe(true);
   await page.getByRole("button", { name: "Підтвердити", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Підтвердити рекомендацію" });
   await dialog.getByLabel("Коментар").fill(comment);
@@ -76,6 +87,25 @@ test("manager can sign in, confirm a transfer and read its history", async ({ pa
   await expect(page.getByText(comment)).toBeVisible();
 });
 
+test("the manager recommendations list refreshes while it stays open", async ({ page }) => {
+  const manager = { userId: 7, email: "manager@example.invalid", role: "manager", permissions: ["NETWORK_VIEW"], pharmacyIds: [] } satisfies Principal;
+  let published = false;
+  await page.clock.install();
+  await mockApi(page, manager, async (route, path) => {
+    if (path === "notifications/inbox") return route.fulfill({ json: { items: [], unread: 0, next: null } });
+    if (path === "recommendations") return route.fulfill({ json: published ? [{
+      recommendationId: 43, status: "CREATED", quantity: 6, priority: 1, createdAt: timestamp,
+      donorStock: { stockId: 12, pharmacy: donor, drug }, recipientStock: { stockId: 13, pharmacy: recipient, drug },
+    }] : [] });
+    return route.fulfill({ status: 501 });
+  });
+  await page.goto("/manager/recommendations");
+  await expect(page.getByText("Рекомендацій ще немає")).toBeVisible();
+  published = true;
+  await page.clock.fastForward(60_000);
+  await expect(page.getByRole("link", { name: "Картка та історія рейсу №43" })).toBeVisible();
+});
+
 test("head sees row-level details when an inventory import is rejected", async ({ page }) => {
   const head = { userId: 8, email: "head@example.invalid", role: "head",
     permissions: ["PHARMACY_VIEW", "DATA_IMPORT"], pharmacyIds: [recipient.pharmacyId] } satisfies Principal;
@@ -86,6 +116,7 @@ test("head sees row-level details when an inventory import is rejected", async (
   } satisfies ImportDetail;
   let uploaded = false;
   await mockApi(page, head, async (route, path) => {
+    if (path === "notifications/inbox") return route.fulfill({ json: { items: [], unread: 0, next: null } });
     if (path === "pharmacies/5") return route.fulfill({ json: recipient });
     if (path === "imports") return route.fulfill({ json: { items: uploaded ? [detail] : [], next: null } });
     if (path === "imports/stocks") {

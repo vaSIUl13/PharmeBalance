@@ -25,19 +25,34 @@ const transferTitles: Record<string, string> = {
 export class RecommendationsService {
   constructor(private readonly db: PrismaService) {}
 
-  async list(user: Principal, after?: number) {
+  async list(user: Principal, after?: number, notificationId?: number) {
     const synthetic = new URL(process.env.DATABASE_URL!).pathname.endsWith('_demo');
     const latest = await this.db.forecastRun.findFirst({
       where: { synthetic }, orderBy: [{ asOf: 'desc' }, { id: 'desc' }], select: { id: true },
     });
+    const current: Prisma.RecommendationWhereInput = { OR: [
+      { status: { not: 'CREATED' } },
+      ...(latest ? [{ forecast: { runId: latest.id } }] : []),
+    ] };
+    if (notificationId !== undefined) {
+      if (user.role !== 'manager' || !user.permissions.includes('NETWORK_VIEW')) throw new NotFoundException();
+      const notification = await this.db.systemNotification.findFirst({
+        where: { id: notificationId, userId: user.userId }, select: { recommendationIds: true },
+      });
+      if (!notification?.recommendationIds.length) throw new NotFoundException();
+      const recommendationIds = notification.recommendationIds;
+      return this.db.recommendation.findMany({
+        where: { AND: [transferScope(user), current, { recommendationId: { in: recommendationIds } }] },
+        ...(after ? { cursor: { recommendationId: after }, skip: 1 } : {}),
+        take: 100, orderBy: [{ priority: 'asc' }, { recommendationId: 'asc' }], include: positions,
+      });
+    }
     return this.db.recommendation.findMany({
-      where: { AND: [transferScope(user), { OR: [
-        { status: { not: 'CREATED' } },
-        ...(latest ? [{ forecast: { runId: latest.id } }] : []),
-      ] }] },
+      where: { AND: [transferScope(user), current] },
       ...(after ? { cursor: { recommendationId: after }, skip: 1 } : {}),
       take: 100, orderBy: [{ forecast: { runId: { sort: 'desc', nulls: 'last' } } }, { priority: 'asc' },
         { recommendationId: 'desc' }],
+      ...(user.role === 'manager' ? { include: positions } : {}),
     });
   }
 

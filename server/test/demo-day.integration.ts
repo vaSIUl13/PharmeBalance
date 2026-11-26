@@ -4,10 +4,13 @@ import { mkdtemp, readFile, readdir, rmdir, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { closeDemoDay, closeLockedDay, latestDemoDay } from '../src/modules/demo-day/demo-close';
 import type { DailyReport } from '../src/modules/demo-day/demo-report';
 import { basePolicy } from '../src/modules/forecasts/forecast-model';
+import { publishSnapshot } from '../src/modules/forecasts/forecast-run';
+import { applyDemoStockPulse } from '../src/modules/demo-day/demo-intraday';
+import { generateRecommendations } from '../src/modules/recommendations/generate';
 
 test('a demo report atomically closes one day, preserves reservations and advances forecasting', async t => {
   const url = process.env.AUTH_TEST_DATABASE_URL;
@@ -81,7 +84,34 @@ test('a demo report atomically closes one day, preserves reservations and advanc
     assert(forecast.createdAt >= stock.quantityAsOf);
     assert.equal((await closeLockedDay(tx, code, { through: day, expected: day, policy: basePolicy })).status, 'already-updated');
     assert.equal(await tx.importBatch.count({ where: { pharmacyId, syntheticKey: { startsWith: 'demo-day:' } } }), 2);
+    await verifyIntradayChange(tx, { code, day, pharmacyId, realStockId: realStock.stockId });
     throw rollback;
   }, { timeout: 30_000 }), error => error === rollback);
   assert.equal(await db.pharmacy.count({ where: { code } }), 0);
 });
+
+async function verifyIntradayChange(tx: Prisma.TransactionClient, fixture: {
+  code: string; day: string; pharmacyId: number; realStockId: number;
+}) {
+  const { code, day, pharmacyId, realStockId } = fixture;
+  const { pharmacyId: donorPharmacyId } = await tx.pharmacy.create({ data: { code: code + 'D', name: 'Demo donor',
+    address: 'Test', city: 'Test', latitude: 49.01, longitude: 24, isSynthetic: true } });
+  const { drugId } = await tx.drug.create({ data: { sku: code + 'P', name: 'Pulse fixture', unit: 'pack', dosageForm: 'tablet' } });
+  const recipient = await tx.stockItem.create({ data: { pharmacyId, drugId, quantity: 10, msl: 4, maxLevel: 14, reservedQuantity: 2 } });
+  await tx.stockItem.create({ data: { pharmacyId: donorPharmacyId, drugId, quantity: 25, maxLevel: 10 } });
+  const slot = new Date('2070-01-02T18:00:00Z');
+  await publishSnapshot(tx, new Date(day), true, basePolicy, slot);
+  assert.equal(await applyDemoStockPulse(tx, code, slot, slot), 1);
+  assert.equal(await applyDemoStockPulse(tx, code, slot, slot), 0);
+  const adjusted = await tx.stockItem.findUniqueOrThrow({ where: { stockId: recipient.stockId } });
+  assert.equal(adjusted.quantity, 3);
+  assert.equal(adjusted.reservedQuantity, 2);
+  assert.equal((await tx.stockItem.findUniqueOrThrow({ where: { stockId: realStockId } })).quantity, 17);
+  assert.equal(await tx.sale.count({ where: { stockId: recipient.stockId } }), 0);
+  assert.equal(await latestDemoDay(tx), day);
+  const published = await publishSnapshot(tx, new Date(day), true, basePolicy, slot);
+  assert.equal(published.reused, false);
+  const risk = await tx.risk.findFirstOrThrow({ where: { forecast: { runId: published.runId, stockId: recipient.stockId } } });
+  assert.equal(risk.riskLevel, 'HIGH');
+  assert.equal((await generateRecommendations(tx, published.runId, true)).created, 1);
+}

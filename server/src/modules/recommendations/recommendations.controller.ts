@@ -13,8 +13,8 @@ export class RecommendationsController {
   @recommendationsDocs.list
   @Get()
   @Header('Cache-Control', 'no-store')
-  list(@Req() req: AuthRequest, @Query('after') after?: string) {
-    return this.recommendations.list(req.principal!, optionalQueryId(after, 'after'));
+  list(@Req() req: AuthRequest, @Query('after') after?: string, @Query('notificationId') notificationId?: string) {
+    return this.recommendations.list(req.principal!, optionalQueryId(after, 'after'), optionalQueryId(notificationId, 'notificationId'));
   }
 
   @recommendationsDocs.detail

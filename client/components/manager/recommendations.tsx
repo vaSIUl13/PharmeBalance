@@ -2,8 +2,9 @@
 
 import { formatTripDistance } from "@/lib/logist/format";
 import Link from "next/link";
-import { useState } from "react";
-import { loadTransfers } from "@/lib/head/api";
+import { useSearchParams } from "next/navigation";
+import { useCallback, useState } from "react";
+import { loadNotificationTransfers, loadTransfers } from "@/lib/head/api";
 import { formatDateTime, formatNumber, transferStatuses } from "@/lib/head/format";
 import type { TransferDetail, TransferStatus } from "@/lib/head/types";
 import { useResource } from "@/lib/head/use-resource";
@@ -12,12 +13,20 @@ import type { DecisionCommand } from "@/lib/manager/types";
 import { Icon } from "@/components/ui/icon";
 import { Badge, buttonClasses, Card, EmptyState, inputClasses, Kpi, Notice, PageHeader, ResourceGate } from "@/components/head/ui";
 import { DecisionDialog } from "./decision-dialog";
+import { useRefreshWhileVisible } from "@/lib/manager/use-refresh-while-visible";
 
 const listLimit = 100;
 
 export function Recommendations() {
-  const trips = useResource(loadTransfers);
-  const [status, setStatus] = useState<"all" | TransferStatus>("CREATED");
+  const notificationId = useSearchParams().get("notificationId");
+  return <RecommendationsList key={notificationId} notificationId={notificationId} />;
+}
+
+function RecommendationsList({ notificationId }: { notificationId: string | null }) {
+  const load = useCallback(() => notificationId ? loadNotificationTransfers(notificationId) : loadTransfers(), [notificationId]);
+  const trips = useResource(load);
+  useRefreshWhileVisible(trips.reload);
+  const [status, setStatus] = useState<"all" | TransferStatus>(notificationId ? "all" : "CREATED");
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<{ trip: TransferDetail; command: DecisionCommand } | null>(null);
   const [message, setMessage] = useState("");
@@ -63,6 +72,11 @@ export function Recommendations() {
       } />
       {message && <Notice tone="success">{message}</Notice>}
       {problem && <Notice tone="danger">{problem}</Notice>}
+      {notificationId && (
+        <Notice tone="info">
+          Рекомендації зі сповіщення. <Link href="/manager/recommendations" className="font-semibold underline">Усі рекомендації</Link>
+        </Notice>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Kpi label="Очікують рішення" icon="clock" tone="warning" value={trips.data ? count("CREATED") : "…"} />
@@ -91,7 +105,9 @@ export function Recommendations() {
 
         <ResourceGate resource={trips} errorText="Не вдалося завантажити рекомендації.">
           {() => items.length === 0
-            ? <EmptyState title="Рекомендацій ще немає" hint="Сформуйте їх за останнім прогнозом" />
+            ? notificationId
+              ? <EmptyState title="Рекомендації з цього сповіщення вже недоступні" />
+              : <EmptyState title="Рекомендацій ще немає" hint="Сформуйте їх за останнім прогнозом" />
             : visible.length === 0
               ? <EmptyState title="Нічого не знайдено" hint="Змініть статус або пошуковий запит" />
               : (
@@ -146,7 +162,7 @@ export function Recommendations() {
                       </tbody>
                     </table>
                   </div>
-                  {items.length >= listLimit && (
+                  {!notificationId && items.length >= listLimit && (
                     <p className="border-t border-[#e2e8e5] px-4 py-3 text-xs text-[#64748b]">Показано перші {listLimit} рекомендацій.</p>
                   )}
                 </>
